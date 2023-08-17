@@ -48,11 +48,14 @@ struct i387_struct {
 	long	st_space[20];	/* 8*10 bytes for each FP-reg = 80 bytes */
 };
 
+/*
+* 进程状态信息结构
+*/
 struct tss_struct {
 	long	back_link;	/* 16 high bits zero */
-	long	esp0;
-	long	ss0;		/* 16 high bits zero */
-	long	esp1;
+	long	esp0;		// 内核堆栈指针值
+	long	ss0;		// 内核堆栈边界值 /* 16 high bits zero */
+	long	esp1;		
 	long	ss1;		/* 16 high bits zero */
 	long	esp2;
 	long	ss2;		/* 16 high bits zero */
@@ -75,18 +78,21 @@ struct tss_struct {
 	struct i387_struct i387;
 };
 
+/*
+* 进程表项结构
+*/
 struct task_struct {
 /* these are hardcoded - don't touch */
-	long state;	/* -1 unrunnable, 0 runnable, >0 stopped */
-	long counter;
-	long priority;
+	long state;	/* 进程状态 -1 未运行, 0 运行 (正在运行或就绪), 1 可中断睡眠态, 2 不可中断睡眠状态, 3 僵死状态, 4 暂停状态*/
+	long counter; /* 当前程序剩余时间片 长度 */
+	long priority; /* 进程优先权值*/
 	long signal;
 	struct sigaction sigaction[32];
 	long blocked;	/* bitmap of masked signals */
 /* various fields */
 	int exit_code;
 	unsigned long start_code,end_code,end_data,brk,start_stack;
-	long pid,father,pgrp,session,leader;
+	long pid,father,pgrp,session,leader; //pid father 为 父进程 id
 	unsigned short uid,euid,suid;
 	unsigned short gid,egid,sgid;
 	long alarm;
@@ -103,7 +109,7 @@ struct task_struct {
 /* ldt for this task 0 - zero 1 - cs 2 - ds&ss */
 	struct desc_struct ldt[3];
 /* tss for this task */
-	struct tss_struct tss;
+	struct tss_struct tss; // 进程相关数据
 };
 
 /*

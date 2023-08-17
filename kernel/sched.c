@@ -124,20 +124,24 @@ void schedule(void)
 	while (1) {
 		c = -1;
 		next = 0;
-		i = NR_TASKS;
+		i = NR_TASKS; // 调度程序从进程表最后一项进行对比
 		p = &task[NR_TASKS];
 		while (--i) {
 			if (!*--p)
 				continue;
+				// 查询 拥有最多时间片的 运行进程进行切换
 			if ((*p)->state == TASK_RUNNING && (*p)->counter > c)
 				c = (*p)->counter, next = i;
 		}
 		if (c) break;
+		// 所有运行线程时间片用完时，重新分配所有时间片
 		for(p = &LAST_TASK ; p > &FIRST_TASK ; --p)
 			if (*p)
+				// 按照优先权 重新计算 时间片值 counter / 2 + priority(优先权) 
 				(*p)->counter = ((*p)->counter >> 1) +
 						(*p)->priority;
 	}
+	/*切换进程到*/
 	switch_to(next);
 }
 
@@ -301,6 +305,11 @@ void add_timer(long jiffies, void (*fn)(void))
 	}
 	sti();
 }
+
+/*
+* 每次时钟中断时进行调用
+* @param cpl 指的是当前调用程序系统特权级
+*/ 
 
 void do_timer(long cpl)
 {

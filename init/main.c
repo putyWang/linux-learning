@@ -101,6 +101,9 @@ static long main_memory_start = 0;
 
 struct drive_info { char dummy[32]; } drive_info;
 
+/*
+* 系统初始化入口(引导程序在系统加载到内存后进行调用)
+*/
 void main(void)		/* This really IS void, no error here. */
 {			/* The startup routine assumes (well, ...) this */
 /*

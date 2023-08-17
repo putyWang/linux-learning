@@ -2,7 +2,9 @@
 ! SYS_SIZE is the number of clicks (16 bytes) to be loaded.
 ! 0x3000 is 0x30000 bytes = 196kB, more than enough for current
 ! versions of linux
-!
+
+! SYSSIZE 表示需要加载的节数（1节 = 16字节）为 0x30000 字节，192kb（1024字节为1kb）
+! 指的是 system 模块的大小，本处给的是最大默认值
 SYSSIZE = 0x3000
 !
 !	bootsect.s		(C) 1991 Linus Torvalds
@@ -22,37 +24,60 @@ SYSSIZE = 0x3000
 ! read errors will result in a unbreakable loop. Reboot by hand. It
 ! loads pretty fast by getting whole sectors at a time whenever possible.
 
+! bootsect.s 被 bios 启动子程序加载到 0x7c00 处，随后将其自己移动到 0x90000 处（574kb），
+! 并跳转至那里，然后使用 bios 中断将 steup 直接加载到他代码之后 （0x90200， 576.5kb），并将 system 模块加载到 0x10000 处（574kb）处，
+
+! 使用 .global 关键字定义了 六个全局标识符
 .globl begtext, begdata, begbss, endtext, enddata, endbss
+
+! .text 声明文本段 
 .text
 begtext:
+
+! .data 声明数据段
 .data
 begdata:
+
+! .bss 声明为初始化数据段
 .bss
 begbss:
+
+! .text 声明文本段 
 .text
 
+! setup 程序扇区数值
 SETUPLEN = 4				! nr of setup-sectors
+! bootseg 的原始段地址
 BOOTSEG  = 0x07c0			! original address of boot-sector
+! 移动后的 bootsect 段地址
 INITSEG  = 0x9000			! we move boot here - out of the way
+! setup 程序移动地址
 SETUPSEG = 0x9020			! setup starts here
+! system 模块 加载地址
 SYSSEG   = 0x1000			! system loaded at 0x10000 (65536).
+! 停止加载的段地址
 ENDSEG   = SYSSEG + SYSSIZE		! where to stop loading
 
 ! ROOT_DEV:	0x000 - same type of floppy as boot.
 !		0x301 - first partition on first drive etc
+
+! ROOT_DEV 设置根文件系统设备
+! 0x000 - 引导软驱设备
+! 0x301 - 第一个硬盘上的第一个分区 。。。
+! 0x306 - 第二个硬盘的第一个分区
 ROOT_DEV = 0x306
 
-entry start
+entry start ! 告诉连接器程序从该处开始
 start:
-	mov	ax,#BOOTSEG
+	mov	ax,#BOOTSEG ! 将寄存器 ds 中的设置为 0x07c0
 	mov	ds,ax
-	mov	ax,#INITSEG
+	mov	ax,#INITSEG ! 将寄存器 es 中的设置为 0x9000
 	mov	es,ax
-	mov	cx,#256
-	sub	si,si
-	sub	di,di
-	rep
-	movw
+	mov	cx,#256 ! 设置移动计数值为 256 
+	sub	si,si ! 设置源地址为 ds:si = 0x07c0:0x0000
+	sub	di,di ! 设置目标地址为 es:si = 0x9000:0x0000
+	rep ! 重复执行下一行直到 cx 中数递减到 0 
+	movw ! 每次移动一个字
 	jmpi	go,INITSEG
 go:	mov	ax,cs
 	mov	ds,ax
