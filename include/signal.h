@@ -42,13 +42,21 @@ typedef unsigned int sigset_t;		/* 32 bits */
 #define SIG_UNBLOCK        1	/* for unblocking signals */
 #define SIG_SETMASK        2	/* for setting the signal mask */
 
-#define SIG_DFL		((void (*)(int))0)	/* default signal handling */
-#define SIG_IGN		((void (*)(int))1)	/* ignore signal */
+#define SIG_DFL		((void (*)(int))0)	/* default signal handling */ // 默认信号处理程序（信号句柄）
+#define SIG_IGN		((void (*)(int))1)	/* ignore signal */ // 设置阻塞信号集（信号屏蔽码）
 
+/**
+ * 信号数据结构、
+ * 引起触发信号处理的信号也将被阻塞，除非使用 SA_NOMASK 标识
+*/
 struct sigaction {
+	// 对应某信号指定要采取的行为，可以是 SIG_DFL、SIG_IGN来忽略该信号 也可以是指向处理该信号函数的一个指针
 	void (*sa_handler)(int);
+	// 给出对信号的屏蔽码，在执行时将会屏蔽这些信号的处理
 	sigset_t sa_mask;
+	// 指定改变信号处理过程的信号集（由SA_NOCLDSTOP、SA_NOMASK与SA_ONESHOT所定义）
 	int sa_flags;
+	// 回复函数指针，由函数库提供，用于清理用户堆栈
 	void (*sa_restorer)(void);
 };
 

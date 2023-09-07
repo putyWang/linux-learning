@@ -27,6 +27,8 @@ buf = 16
 
 mode:	.byte 0		/* caps, alt, ctrl and shift mode */
 leds:	.byte 2		/* num-lock, caps, scroll-lock mode (nom-lock on) */
+/*当扫描码为 0xe0 或 0xe1 时，置 e0 标志， 表示其后还跟随着 1 个或 2个字符扫描码
+  e1 置位 1=1 e0（表示其后跟随 shift、ctrl 等键为右边） 置位 0=1 */
 e0:	.byte 0
 
 /*
@@ -34,40 +36,41 @@ e0:	.byte 0
  *  keyboard scan-code and converts it into the appropriate
  *  ascii character(s).
  */
-_keyboard_interrupt:
+ /*键盘中断处理程序入口*/
+_keyboard_interrupt: 
 	pushl %eax
 	pushl %ebx
 	pushl %ecx
 	pushl %edx
 	push %ds
 	push %es
-	movl $0x10,%eax
+	movl $0x10,%eax # 将 ds、es 段寄存器置为内核数据段
 	mov %ax,%ds
 	mov %ax,%es
 	xorl %al,%al		/* %eax is scan code */
-	inb $0x60,%al
-	cmpb $0xe0,%al
+	inb $0x60,%al // 读取扫描码
+	cmpb $0xe0,%al // 扫描码为 0xe0 时，跳转到 e0 标志代码处
 	je set_e0
-	cmpb $0xe1,%al
+	cmpb $0xe1,%al // 扫描码为 0xe1 时，跳转到 e1 标志代码处
 	je set_e1
-	call key_table(,%eax,4)
-	movb $0,e0
-e0_e1:	inb $0x61,%al
+	call key_table(,%eax,4) // 其余情况调用键处理程序 key_table + eax * 4
+	movb $0,e0 // 重置 e0 位
+e0_e1:	inb $0x61,%al # 取 PPI 端口 B 状态，位7用于允许/禁止（0/1）键盘
 	jmp 1f
 1:	jmp 1f
-1:	orb $0x80,%al
+1:	orb $0x80,%al # al 位置位（禁止键盘工作）
 	jmp 1f
 1:	jmp 1f
-1:	outb %al,$0x61
+1:	outb %al,$0x61 # 使 PPI PB7 位置位
 	jmp 1f
 1:	jmp 1f
-1:	andb $0x7F,%al
-	outb %al,$0x61
-	movb $0x20,%al
+1:	andb $0x7F,%al # al 位7 复位
+	outb %al,$0x61 # 重新允许键盘工作
+	movb $0x20,%al # 向 8259 芯片发送 EOI 结束中断指令
 	outb %al,$0x20
-	pushl $0
-	call _do_tty_interrupt
-	addl $4,%esp
+	pushl $0 # 控制台 tty 号 = 0，作为参数入栈
+	call _do_tty_interrupt # 将收到的数据复制成规范数据存入规范字符缓冲队列中去
+	addl $4,%esp # 丢弃入栈参数
 	pop %es
 	pop %ds
 	popl %edx
@@ -75,9 +78,9 @@ e0_e1:	inb $0x61,%al
 	popl %ebx
 	popl %eax
 	iret
-set_e0:	movb $1,e0
+set_e0:	movb $1,e0 # e0 置位
 	jmp e0_e1
-set_e1:	movb $2,e0
+set_e1:	movb $2,e0 # e1 置位
 	jmp e0_e1
 
 /*
@@ -85,47 +88,57 @@ set_e1:	movb $2,e0
  * %ebx:%eax. (%edx is high). The bytes are written in the
  * order %al,%ah,%eal,%eah,%bl,%bh ... until %eax is zero.
  */
+/*
+ * 将 ebx:eax 中最多 8 个字符添入缓冲队列中；
+ */
 put_queue:
 	pushl %ecx
 	pushl %edx
-	movl _table_list,%edx		# read-queue for console
-	movl head(%edx),%ecx
-1:	movb %al,buf(%edx,%ecx)
+	movl _table_list,%edx		# read-queue for console // 获取控制台读缓冲队列
+	movl head(%edx),%ecx // 取缓冲队列头指针 -> ecx
+1:	movb %al,buf(%edx,%ecx) // 将al 中的字符放入缓冲队列头指针位置
 	incl %ecx
 	andl $size-1,%ecx
 	cmpl tail(%edx),%ecx		# buffer full - discard everything
 	je 3f
-	shrdl $8,%ebx,%eax
+	shrdl $8,%ebx,%eax // 将 ebx 中 8 位比特位右移 8 位到 eax 中，但 ebx 不变
 	je 2f
 	shrl $8,%ebx
 	jmp 1b
+# 重新设置 缓冲区头指针位置 同时唤醒等待程序
 2:	movl %ecx,head(%edx)
 	movl proc_list(%edx),%ecx
 	testl %ecx,%ecx
 	je 3f
 	movl $0,(%ecx)
+// 缓冲区满或移动完后结束
 3:	popl %edx
 	popl %ecx
 	ret
 
-ctrl:	movb $0x04,%al
+# 根据 ctrl 与 alt 的扫描码，分别设置模式标志的相应位
+# 若之前收到过 0xe0 扫描码，则说明是按下的右边的 ctrl 或者 atl 键，对应设置 ctrl 或者 alt 在模式标志 mode 中的比特位
+ctrl:	movb $0x04,%al # 0x04 是模式标志 mode 中左 ctrl 键对应的比特位
 	jmp 1f
-alt:	movb $0x10,%al
-1:	cmpb $0,e0
+alt:	movb $0x10,%al # 0x10 是模式标志 mode 中左 alt 键对应的比特位
+1:	cmpb $0,e0 设置过 eo 标志位
 	je 2f
-	addb %al,%al
-2:	orb %al,mode
+	addb %al,%al # 转换成右键
+2:	orb %al,mode # 设置模式标志 mode 中对应的比特位
 	ret
-unctrl:	movb $0x04,%al
+# 处理 ctrl 与 alt 松开时的扫描码，对应复位模式标志 mode 中的比特位；
+# 处理时也是根据 es0 判断是否为 右边的按键
+unctrl:	movb $0x04,%al # 0x04 是模式标志 mode 中左 ctrl 键对应的比特位
 	jmp 1f
-unalt:	movb $0x10,%al
+unalt:	movb $0x10,%al # 0x10 是模式标志 mode 中左 alt 键对应的比特位
 1:	cmpb $0,e0
 	je 2f
-	addb %al,%al
-2:	notb %al
+	addb %al,%al # 转换成右键
+2:	notb %al # 复位模式标志 mode 中对应的比特位
 	andb %al,mode
 	ret
 
+# shift 按键相关处理
 lshift:
 	orb $0x01,mode
 	ret
@@ -164,8 +177,11 @@ num:	xorb $2,leds
  *  curosr-key/numeric keypad cursor keys are handled here.
  *  checking for numeric keypad etc.
  */
+/*
+ * 处理方向键/数字小键盘方向键，检测数字小键盘等
+ */
 cursor:
-	subb $0x47,%al
+	subb $0x47,%al # > 47 表示时 小数字键盘上的键发出的扫描码
 	jb 1f
 	cmpb $12,%al
 	ja 1f
@@ -241,10 +257,12 @@ func_table:
 	.long 0x455b5b1b,0x465b5b1b,0x475b5b1b,0x485b5b1b
 	.long 0x495b5b1b,0x4a5b5b1b,0x4b5b5b1b,0x4c5b5b1b
 
+# 扫描码对应的字符映射表（根据 config.h 中定义的键盘类型获取对应的ASII表）
+# 芬兰语键盘的扫描码映射表
 #if	defined(KBD_FINNISH)
 key_map:
-	.byte 0,27
-	.ascii "1234567890+'"
+	.byte 0,27 # 扫描码 0x00 0x01 对应的 ASCII 码
+	.ascii "1234567890+'" # 扫描码 0x02 ～ 0x0d 对应的 ASCII 码
 	.byte 127,9
 	.ascii "qwertyuiop}"
 	.byte 0,13,0
@@ -257,7 +275,7 @@ key_map:
 	.byte 0,0,0,0,0,0,0	/* 4F-55 */
 	.byte '<
 	.fill 10,1,0
-
+# shift 同时按下时的映射表
 shift_map:
 	.byte 0,27
 	.ascii "!\"#$%&/()=?`"
@@ -274,6 +292,7 @@ shift_map:
 	.byte '>
 	.fill 10,1,0
 
+# alt 同时按下时的映射表
 alt_map:
 	.byte 0,0
 	.ascii "\0@\0$\0\0{[]}\\\0"
@@ -290,8 +309,8 @@ alt_map:
 	.byte '|
 	.fill 10,1,0
 
+# 英语键盘的扫描码映射表
 #elif defined(KBD_US)
-
 key_map:
 	.byte 0,27
 	.ascii "1234567890-="
@@ -340,9 +359,8 @@ alt_map:
 	.byte 0,0,0,0,0,0,0	/* 4F-55 */
 	.byte '|
 	.fill 10,1,0
-
+# 德语键盘的扫描码映射表
 #elif defined(KBD_GR)
-
 key_map:
 	.byte 0,27
 	.ascii "1234567890\\'"
@@ -392,9 +410,8 @@ alt_map:
 	.byte '|
 	.fill 10,1,0
 
-
+# 法语键盘的扫描码映射表
 #elif defined(KBD_FR)
-
 key_map:
 	.byte 0,27
 	.ascii "&{\"'(-}_/@)="
@@ -450,24 +467,30 @@ alt_map:
  * do_self handles "normal" keys, ie keys that don't change meaning
  * and which have just one character returns.
  */
+ /*
+ * do_self 用于处理普通键，也即含义没有变化并且只有一个字符返回的键
+ */
 do_self:
+	# 下面 7 行代码用于根据模式标志 mode 选择 alt_map、shift_map或key_map
 	lea alt_map,%ebx
-	testb $0x20,mode		/* alt-gr */
+	testb $0x20,mode		/* alt-gr */ // 同时按下 alter
 	jne 1f
 	lea shift_map,%ebx
-	testb $0x03,mode
+	testb $0x03,mode // 同时按下 shift
 	jne 1f
-	lea key_map,%ebx
-1:	movb (%ebx,%eax),%al
+	lea key_map,%ebx // 其他使用默认
+# 将对应字符转化为大写字符
+1:	movb (%ebx,%eax),%al // 取 表中对应字符 
 	orb %al,%al
 	je none
-	testb $0x4c,mode		/* ctrl or caps */
+	testb $0x4c,mode		/* ctrl or caps */ // 控制键已按下或caps锁定
 	je 2f
-	cmpb $'a,%al
+	cmpb $'a,%al 
 	jb 2f
 	cmpb $'},%al
 	ja 2f
-	subb $32,%al
+	subb $32,%al // 转化为大写字符
+# 将对应字符转化为控制字符
 2:	testb $0x0c,mode		/* ctrl */
 	je 3f
 	cmpb $64,%al
@@ -475,9 +498,11 @@ do_self:
 	cmpb $64+32,%al
 	jae 3f
 	subb $64,%al
+# 左 ctrl 键同时按下，则将字符位 7 置位
 3:	testb $0x10,mode		/* left alt */
 	je 4f
 	orb $0x80,%al
+# 将处理后的字符放入 缓冲队列之中
 4:	andl $0xff,%eax
 	xorl %ebx,%ebx
 	call put_queue
@@ -498,6 +523,10 @@ minus:	cmpb $1,e0
  * This table decides which routine to call when a scan-code has been
  * gotten. Most routines just call do_self, or none, depending if
  * they are make or break.
+ */
+ /*
+ * key_table 是一张子程序地址跳转表，当取得扫描码后就根据此表调用相应的扫描码处理子程序对其进行处理
+ * 大多数调用的子程序时 do_self、none，取决于是按键还是释放键
  */
 key_table:
 	.long none,do_self,do_self,do_self	/* 00-03 s0 esc 1 2 */

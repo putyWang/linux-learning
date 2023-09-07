@@ -5,6 +5,9 @@
  *  user data space). This is NOT a bug, as any user program that changes
  *  es deserves to die if it isn't careful.
  */
+/**
+ * 将以地址 src 开始的 n 长度的数据 移动到 dest 处
+*/
 #define memcpy(dest,src,n) ({ \
 void * _res = dest; \
 __asm__ ("cld;rep;movsb" \

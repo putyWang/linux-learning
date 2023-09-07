@@ -392,9 +392,17 @@ __asm__("cld\n\t"
 return __res;
 }
 
+/**
+ * 将字符填写指定长度的内存块
+ * @param s // 内存区域
+ * @param c // 填写的字符
+ * @param count // 字节数
+*/
 extern inline void * memset(void * s,char c,int count)
 {
-__asm__("cld\n\t"
+// cld 命令清方向位
+__asm__("cld\n\t" 
+// 重复 stosb 操作将 al 中的字符存入 es:[edi]，并且 edi++
 	"rep\n\t"
 	"stosb"
 	::"a" (c),"D" (s),"c" (count)

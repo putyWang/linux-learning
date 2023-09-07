@@ -60,6 +60,13 @@ void reserved(void);
 void parallel_interrupt(void);
 void irq13(void);
 
+/**
+ * 打印出错中断的名称、出错号、调用程序的的 EIP、EFLAGGS、ESP、fs 段寄存器值、段的基址、段的长度、进程号 pid、任务号、10字节指令码；
+ * 如果堆栈在用户段，则还打印 16 字节的堆栈内容
+ * str 出错中断名称
+ * esp_ptr 段寄存数组
+ * nr 进程号
+*/
 static void die(char * str,long esp_ptr,long nr)
 {
 	long * esp = (long *) esp_ptr;
@@ -76,7 +83,7 @@ static void die(char * str,long esp_ptr,long nr)
 			printk("%p ",get_seg_long(0x17,i+(long *)esp[3]));
 		printk("\n");
 	}
-	str(i);
+	str(i); // 取当前进程号
 	printk("Pid: %d, process nr: %d\n\r",current->pid,0xffff & i);
 	for(i=0;i<10;i++)
 		printk("%02x ",0xff & get_seg_byte(esp[1],(i+(char *)esp[0])));
@@ -84,6 +91,7 @@ static void die(char * str,long esp_ptr,long nr)
 	do_exit(11);		/* play segment exception */
 }
 
+// 以 do 开头的函数，对应名称中断处理程序调用的 c 函数
 void do_double_fault(long esp, long error_code)
 {
 	die("double fault",esp,error_code);
@@ -178,31 +186,39 @@ void do_reserved(long esp, long error_code)
 	die("reserved (15,17-47) error",esp,error_code);
 }
 
+/*
+	对陷阱门进行初始化（中断向量）
+	设置 0～16 系统中断向量；
+	15,17-47 预留给其他程序使用
+
+	set_trap_gate 与 set_system_gate 主要区别是前者设置的特权级为 0，后者 3；
+	断点 in3、溢出 overflow 与 边界出错中断 bounds 可由任何程序产生；
+*/
 void trap_init(void)
 {
 	int i;
 
-	set_trap_gate(0,&divide_error);
-	set_trap_gate(1,&debug);
-	set_trap_gate(2,&nmi);
-	set_system_gate(3,&int3);	/* int3-5 can be called from all */
-	set_system_gate(4,&overflow);
-	set_system_gate(5,&bounds);
-	set_trap_gate(6,&invalid_op);
-	set_trap_gate(7,&device_not_available);
-	set_trap_gate(8,&double_fault);
-	set_trap_gate(9,&coprocessor_segment_overrun);
-	set_trap_gate(10,&invalid_TSS);
-	set_trap_gate(11,&segment_not_present);
-	set_trap_gate(12,&stack_segment);
-	set_trap_gate(13,&general_protection);
-	set_trap_gate(14,&page_fault);
-	set_trap_gate(15,&reserved);
-	set_trap_gate(16,&coprocessor_error);
-	for (i=17;i<48;i++)
+	set_trap_gate(0,&divide_error); // 进行除零操作时 故障 产生的中断
+	set_trap_gate(1,&debug); // 当进行程序单步调试时，设置标志寄存器 eflags 的T标志时产生的中断 （陷阱）
+	set_trap_gate(2,&nmi); // 由不可屏蔽中断 NMI 产生
+	set_system_gate(3,&int3);	// 由断点指令 int3 产生，与 debug 处理相同 （陷阱）
+	set_system_gate(4,&overflow); // eflags 的溢出标志位 OF 引起的 （陷阱）
+	set_system_gate(5,&bounds); // 寻址到有效地址之外引起的
+	set_trap_gate(6,&invalid_op); // cpu 发现一个无效指定操作码时产生的
+	set_trap_gate(7,&device_not_available); // 协处理器不存在时，cpu遇到一个转义指令并且EM置位或 MP 和 TS 都在置位状态时，CPU 遇到 WAIT 或 一个转义指令时产生的
+	set_trap_gate(8,&double_fault); // 双故障出错时产生
+	set_trap_gate(9,&coprocessor_segment_overrun); // 协处理器段超出时产生
+	set_trap_gate(10,&invalid_TSS); // CPU 切换后发现 TSS 无效时引起
+	set_trap_gate(11,&segment_not_present); //描述符所指的段不存在时产生
+	set_trap_gate(12,&stack_segment); // 堆栈段不存在或寻址超过堆栈段产生
+	set_trap_gate(13,&general_protection); // 操作不符合 80386 保护机制（特权级）时产生
+	set_trap_gate(14,&page_fault); // 页不在内存
+	set_trap_gate(15,&reserved); // 15 预留程序使用中断
+	set_trap_gate(16,&coprocessor_error); // 协处理器发出的出错信号引起
+	for (i=17;i<48;i++) // 预留程序使用中断 17 - 47
 		set_trap_gate(i,&reserved);
-	set_trap_gate(45,&irq13);
-	outb_p(inb_p(0x21)&0xfb,0x21);
-	outb(inb_p(0xA1)&0xdf,0xA1);
-	set_trap_gate(39,&parallel_interrupt);
+	set_trap_gate(45,&irq13); //协处理器中断处理
+	outb_p(inb_p(0x21)&0xfb,0x21); // 允许主 8259A 芯片 IRQ2 中断请求
+	outb(inb_p(0xA1)&0xdf,0xA1); // 允许从 8259A 芯片 IRQ13 中断请求
+	set_trap_gate(39,&parallel_interrupt); // 设置并行口的陷阱门
 }

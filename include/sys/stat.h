@@ -27,9 +27,9 @@ struct stat {
 #define S_ISGID  0002000
 #define S_ISVTX  0001000
 
-#define S_ISREG(m)	(((m) & S_IFMT) == S_IFREG)
+#define S_ISREG(m)	(((m) & S_IFMT) == S_IFREG) // 是否为常规文件
 #define S_ISDIR(m)	(((m) & S_IFMT) == S_IFDIR)
-#define S_ISCHR(m)	(((m) & S_IFMT) == S_IFCHR)
+#define S_ISCHR(m)	(((m) & S_IFMT) == S_IFCHR) // 指定文件i节点是否为字符设备文件
 #define S_ISBLK(m)	(((m) & S_IFMT) == S_IFBLK)
 #define S_ISFIFO(m)	(((m) & S_IFMT) == S_IFIFO)
 

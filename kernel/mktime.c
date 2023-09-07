@@ -38,6 +38,9 @@ static int month[12] = {
 	DAY*(31+29+31+30+31+30+31+31+30+31+30)
 };
 
+/**
+ * 将当前时间转化为从 1970 到现在的秒数
+*/
 long kernel_mktime(struct tm * tm)
 {
 	long res;

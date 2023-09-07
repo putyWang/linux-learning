@@ -1,3 +1,8 @@
+/**
+ * 读取 fs 段中指定地址处的字节
+ * @param addr 指定内存地址
+ * @return 返回该内存地址的字节
+*/
 extern inline unsigned char get_fs_byte(const char * addr)
 {
 	unsigned register char _v;

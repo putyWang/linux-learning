@@ -36,15 +36,15 @@
  * These are set up by the setup-routine at boot-time:
  */
 
-#define ORIG_X			(*(unsigned char *)0x90000)
-#define ORIG_Y			(*(unsigned char *)0x90001)
-#define ORIG_VIDEO_PAGE		(*(unsigned short *)0x90004)
-#define ORIG_VIDEO_MODE		((*(unsigned short *)0x90006) & 0xff)
-#define ORIG_VIDEO_COLS 	(((*(unsigned short *)0x90006) & 0xff00) >> 8)
-#define ORIG_VIDEO_LINES	(25)
-#define ORIG_VIDEO_EGA_AX	(*(unsigned short *)0x90008)
-#define ORIG_VIDEO_EGA_BX	(*(unsigned short *)0x9000a)
-#define ORIG_VIDEO_EGA_CX	(*(unsigned short *)0x9000c)
+#define ORIG_X			(*(unsigned char *)0x90000) // 光标列号
+#define ORIG_Y			(*(unsigned char *)0x90001) // 光标行号
+#define ORIG_VIDEO_PAGE		(*(unsigned short *)0x90004) // 显示页面
+#define ORIG_VIDEO_MODE		((*(unsigned short *)0x90006) & 0xff) // 显示模式
+#define ORIG_VIDEO_COLS 	(((*(unsigned short *)0x90006) & 0xff00) >> 8) //字符列数
+#define ORIG_VIDEO_LINES	(25) // 显示行数
+#define ORIG_VIDEO_EGA_AX	(*(unsigned short *)0x90008) 
+#define ORIG_VIDEO_EGA_BX	(*(unsigned short *)0x9000a) // 显示内存大小和色彩模式
+#define ORIG_VIDEO_EGA_CX	(*(unsigned short *)0x9000c) // 显卡特性参数
 
 #define VIDEO_TYPE_MDA		0x10	/* Monochrome Text Display	*/
 #define VIDEO_TYPE_CGA		0x11	/* CGA Display 			*/
@@ -60,17 +60,17 @@ static unsigned long	video_num_columns;	/* Number of text columns	*/
 static unsigned long	video_size_row;		/* Bytes per row		*/
 static unsigned long	video_num_lines;	/* Number of test lines		*/
 static unsigned char	video_page;		/* Initial video page		*/
-static unsigned long	video_mem_start;	/* Start of video RAM		*/
-static unsigned long	video_mem_end;		/* End of video RAM (sort of)	*/
-static unsigned short	video_port_reg;		/* Video register select port	*/
-static unsigned short	video_port_val;		/* Video register value port	*/
-static unsigned short	video_erase_char;	/* Char+Attrib to erase with	*/
+static unsigned long	video_mem_start;	/* Start of video RAM		*/ // 显示内存起始处指针
+static unsigned long	video_mem_end;		/* End of video RAM (sort of)	*/ // 显示内存尾指针
+static unsigned short	video_port_reg;		/* Video register select port	*/ // 显示控制索引寄存器端口
+static unsigned short	video_port_val;		/* Video register value port	*/ // 显示控制数据寄存器端口
+static unsigned short	video_erase_char;	/* Char+Attrib to erase with	*/ // 擦除字符属性与字符
 
-static unsigned long	origin;		/* Used for EGA/VGA fast scroll	*/
-static unsigned long	scr_end;	/* Used for EGA/VGA fast scroll	*/
-static unsigned long	pos;
-static unsigned long	x,y;
-static unsigned long	top,bottom;
+static unsigned long	origin;		/* Used for EGA/VGA fast scroll	*/ // 滚屏显示内存开始位置
+static unsigned long	scr_end;	/* Used for EGA/VGA fast scroll	*/ // 滚屏显示内存尾指针
+static unsigned long	pos; // 当前光标位置指向的显示内存位置
+static unsigned long	x,y; //x-当前光标所在列，y-当前光标所在行
+static unsigned long	top,bottom; // top-当前显示最顶行号，bottom-当前显示最底行号
 static unsigned long	state=0;
 static unsigned long	npar,par[NPAR];
 static unsigned long	ques=0;
@@ -85,8 +85,12 @@ static void sysbeep(void);
 #define RESPONSE "\033[?1;2c"
 
 /* NOTE! gotoxy thinks x==video_num_columns is ok */
+/**
+ * 跟踪当前光标位置
+*/
 static inline void gotoxy(unsigned int new_x,unsigned int new_y)
 {
+	// 更新的光标位置不能超过限制
 	if (new_x > video_num_columns || new_y >= video_num_lines)
 		return;
 	x=new_x;
@@ -614,87 +618,117 @@ void con_write(struct tty_struct * tty)
  * Reads the information preserved by setup.s to determine the current display
  * type and sets everything accordingly.
  */
+/**
+ * 该子程序只是初始化控制台中断控制
+ * 读取 setup.s 中保存的信息，已确定当前显示器类型，并设置所有相关参数
+*/
 void con_init(void)
 {
 	register unsigned char a;
 	char *display_desc = "????";
 	char *display_ptr;
 
-	video_num_columns = ORIG_VIDEO_COLS;
-	video_size_row = video_num_columns * 2;
-	video_num_lines = ORIG_VIDEO_LINES;
-	video_page = ORIG_VIDEO_PAGE;
-	video_erase_char = 0x0720;
+	video_num_columns = ORIG_VIDEO_COLS; // 显示字符列数
+	video_size_row = video_num_columns * 2; // 每行需显示的字节数
+	video_num_lines = ORIG_VIDEO_LINES; // 显示字符行数
+	video_page = ORIG_VIDEO_PAGE; // 显示字符页数
+	video_erase_char = 0x0720; // 擦除字符 （0x20 显示字符，0x07 是属性）
 	
+	// 显示模式 7 表示单色显示器
 	if (ORIG_VIDEO_MODE == 7)			/* Is this a monochrome display? */
 	{
-		video_mem_start = 0xb0000;
-		video_port_reg = 0x3b4;
-		video_port_val = 0x3b5;
+		video_mem_start = 0xb0000; //设置单显映像内存起始地址
+		video_port_reg = 0x3b4; // 设置单显索引寄存器接口
+		video_port_val = 0x3b5; // 设置单显数据寄存器接口
+		// 通过 setup.s 中 int 0x10 功能 0x12 获取的显示模式信息，判断是单色显卡还是彩色显卡
+		// 值不为 0x10 时是 单色 EGA 卡
 		if ((ORIG_VIDEO_EGA_BX & 0xff) != 0x10)
 		{
+			// EGA 单色卡
 			video_type = VIDEO_TYPE_EGAM;
+			// 使用内存镜像尾地址为 0xb8000
 			video_mem_end = 0xb8000;
+			// 显示器描述字符串尾 EGAm
 			display_desc = "EGAm";
 		}
+		// 等于 0x10 时为单色 MDA 显卡
 		else
 		{
+			// MDA 单色卡
 			video_type = VIDEO_TYPE_MDA;
+			// 使用内存镜像尾地址为 0xb2000
 			video_mem_end	= 0xb2000;
+			// 显示器描述字符串尾 *MDA
 			display_desc = "*MDA";
 		}
 	}
+	// 彩色模式
 	else								/* If not, it is color. */
 	{
+		// 彩色模式内存开始地址为 0xb8000
 		video_mem_start = 0xb8000;
+		// 设置彩色显示索引寄存器接口
 		video_port_reg	= 0x3d4;
+		// 设置彩色显示数据寄存器接口
 		video_port_val	= 0x3d5;
+		// 值不为 0x10 时是 EGA 彩色卡
 		if ((ORIG_VIDEO_EGA_BX & 0xff) != 0x10)
 		{
+			// EGA 彩色卡
 			video_type = VIDEO_TYPE_EGAC;
+			// 使用内存镜像尾地址为 0xbc000
 			video_mem_end = 0xbc000;
+			// 显示器描述字符串 EGAc
 			display_desc = "EGAc";
 		}
+		// 等于 0x10 时为 CGA 彩色显卡
 		else
 		{
+			// CGA 彩色卡
 			video_type = VIDEO_TYPE_CGA;
+			// 使用内存镜像尾地址为 0xba000
 			video_mem_end = 0xba000;
+			// 显示器描述字符串 *CGA
 			display_desc = "*CGA";
 		}
 	}
 
 	/* Let the user known what kind of display driver we are using */
-	
+	// 使用直接将字符串写到显示内存的对应字节处的方法来定义屏幕右上角展示描述字符串；
+	// 首先获取第一行距离右边界 8 个字节处指针
 	display_ptr = ((char *)video_mem_start) + video_size_row - 8;
+	// 循环复制显示器描述字符串，直到字符为空
 	while (*display_desc)
 	{
-		*display_ptr++ = *display_desc++;
-		display_ptr++;
+		*display_ptr++ = *display_desc++; // 复制字符
+		display_ptr++; // 空出属性字节位置
 	}
 	
 	/* Initialize the variables used for scrolling (mostly EGA/VGA)	*/
-	
-	origin	= video_mem_start;
-	scr_end	= video_mem_start + video_num_lines * video_size_row;
-	top	= 0;
-	bottom	= video_num_lines;
+	// 初始化用与滚屏相关的变量
+	origin	= video_mem_start; // 滚屏起始显示内存地址
+	scr_end	= video_mem_start + video_num_lines * video_size_row; // 滚屏结束内存地址
+	top	= 0; //最顶行哈
+	bottom	= video_num_lines; //最底行号
 
-	gotoxy(ORIG_X,ORIG_Y);
-	set_trap_gate(0x21,&keyboard_interrupt);
-	outb_p(inb_p(0x21)&0xfd,0x21);
-	a=inb_p(0x61);
-	outb_p(a|0x80,0x61);
-	outb(a,0x61);
+	gotoxy(ORIG_X,ORIG_Y); //初始化光标位置 x，y 和对应的内存位置 pos
+	set_trap_gate(0x21,&keyboard_interrupt); // 设置中断号为 0x21 键盘中断陷阱门
+	outb_p(inb_p(0x21)&0xfd,0x21); // 取消 8259A 中对键盘中断的屏蔽，允许 IRQ1
+	a=inb_p(0x61); // 延迟读取键盘端口 0x61
+	outb_p(a|0x80,0x61); // 设置禁止键盘工作（位7置位）
+	outb(a,0x61); // 在允许键盘工作，用于复位键盘操作
 }
 /* from bsd-net-2: */
-
+/**
+ * 关闭扬声器函数
+*/
 void sysbeepstop(void)
 {
 	/* disable counter 2 */
-	outb(inb_p(0x61)&0xFC, 0x61);
+	outb(inb_p(0x61)&0xFC, 0x61); // 将控制器位 1 置为 0，关闭扬声器
 }
 
-int beepcount = 0;
+int beepcount = 0; // 扬声器发声计数
 
 static void sysbeep(void)
 {

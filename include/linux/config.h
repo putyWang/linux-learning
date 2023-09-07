@@ -33,6 +33,11 @@
  *
  * #define HD_TYPE { h,s,c,wpcom,lz,ctl },{ h,s,c,wpcom,lz,ctl }
  */
+/**
+ * 通常情况，在setup.s 中从BIOS 中能获取到硬盘驱动参数，
+ * 在未获取到硬盘参数时可以通过定义 HD_TYPE 来定义硬盘参数表
+ * 两个硬盘参数之间使用 ， 号隔开
+*/
 /*
  This is an example, two drives, first is type 2, second is type 3:
 

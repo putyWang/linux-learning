@@ -14,7 +14,7 @@ extern void floppy_deselect(unsigned int nr);
 
 /* Fd controller regs. S&C, about page 340 */
 #define FD_STATUS	0x3f4
-#define FD_DATA		0x3f5
+#define FD_DATA		0x3f5   // 软盘控制器寄存器接口
 #define FD_DOR		0x3f2		/* Digital Output Register */
 #define FD_DIR		0x3f7		/* Digital Input Register (read) */
 #define FD_DCR		0x3f7		/* Diskette Control Register (write)*/
@@ -59,10 +59,10 @@ extern void floppy_deselect(unsigned int nr);
 /* Values for FD_COMMAND */
 #define FD_RECALIBRATE	0x07		/* move to track 0 */
 #define FD_SEEK		0x0F		/* seek track */
-#define FD_READ		0xE6		/* read with MT, MFM, SKip deleted */
-#define FD_WRITE	0xC5		/* write with MT, MFM */
-#define FD_SENSEI	0x08		/* Sense Interrupt Status */
-#define FD_SPECIFY	0x03		/* specify HUT etc */
+#define FD_READ		0xE6		/* read with MT, MFM, SKip deleted */ // 软盘读命令标志
+#define FD_WRITE	0xC5		/* write with MT, MFM */ // 软盘写命令标志
+#define FD_SENSEI	0x08		/* Sense Interrupt Status */ /*软盘检测是否有中断命令*/
+#define FD_SPECIFY	0x03		/* specify HUT etc */ /*设置软驱参数命令*/
 
 /* DMA commands */
 #define DMA_READ	0x46

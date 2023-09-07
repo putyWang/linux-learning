@@ -15,6 +15,9 @@ typedef unsigned int size_t;
 
 typedef long clock_t;
 
+/*
+	内核时间结构
+*/
 struct tm {
 	int tm_sec;
 	int tm_min;

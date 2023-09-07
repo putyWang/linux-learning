@@ -16,6 +16,11 @@ __asm__("cld\n\t" \
 	"stosl" \
 	::"a" (0),"c" (BLOCK_SIZE/4),"D" ((long) (addr)):"cx","di")
 
+/**
+ * 将指定地址的指定偏移处置位
+ * @param nr 地址偏移量
+ * @param addr 基地址
+*/
 #define set_bit(nr,addr) ({\
 register int res __asm__("ax"); \
 __asm__ __volatile__("btsl %2,%3\n\tsetb %%al": \
@@ -28,6 +33,9 @@ __asm__ __volatile__("btrl %2,%3\n\tsetnb %%al": \
 "=a" (res):"0" (0),"r" (nr),"m" (*(addr))); \
 res;})
 
+/**
+ * 寻址从指定地址开始第一个为 0 的位
+*/
 #define find_first_zero(addr) ({ \
 int __res; \
 __asm__("cld\n" \
@@ -104,6 +112,10 @@ int new_block(int dev)
 	return j;
 }
 
+/**
+ * 
+ * 
+*/
 void free_inode(struct m_inode * inode)
 {
 	struct super_block * sb;
@@ -133,6 +145,11 @@ void free_inode(struct m_inode * inode)
 	memset(inode,0,sizeof(*inode));
 }
 
+/**
+ * 在指定设备上创建新的 i 节点
+ * @param dev 设备号
+ * @return 创建好的 i 节点指针
+*/
 struct m_inode * new_inode(int dev)
 {
 	struct m_inode * inode;
@@ -140,22 +157,28 @@ struct m_inode * new_inode(int dev)
 	struct buffer_head * bh;
 	int i,j;
 
+	// 获取一个空的j节点
 	if (!(inode=get_empty_inode()))
 		return NULL;
+	// 获取该设备的超级块
 	if (!(sb = get_super(dev)))
 		panic("new_inode with unknown device");
 	j = 8192;
 	for (i=0 ; i<8 ; i++)
+		// 寻找拥有空闲i节点的设备 i 节点位图块
 		if (bh=sb->s_imap[i])
 			if ((j=find_first_zero(bh->b_data))<8192)
 				break;
+	// 如果获取块为空或者j大于块的位数，或者所在位的位置和磁盘i节点个数对不上时
 	if (!bh || j >= 8192 || j+i*8192 > sb->s_ninodes) {
-		iput(inode);
+		iput(inode); // 释放申请的空闲 i 节点
 		return NULL;
 	}
+	// 将i节点位图上指定位置置位，表明该i节点已被使用
 	if (set_bit(j,bh->b_data))
 		panic("new_inode: bit already set");
-	bh->b_dirt = 1;
+	bh->b_dirt = 1; // 修改位图所在缓冲区置位已修改，等待同步写回设备
+	// 设置新建 i 节点参数
 	inode->i_count=1;
 	inode->i_nlinks=1;
 	inode->i_dev=dev;

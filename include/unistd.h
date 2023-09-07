@@ -57,6 +57,9 @@
 
 #ifdef __LIBRARY__
 
+/**
+ * 以下是内核实现的系统调用符号常数，用作系统调用函数表中的索引值（include/linux.h）
+*/
 #define __NR_setup	0	/* used only by init, to get system going */
 #define __NR_exit	1
 #define __NR_fork	2
@@ -130,16 +133,21 @@
 #define __NR_setreuid	70
 #define __NR_setregid	71
 
+/**
+ * 不带参数的系统调用嵌入式汇编函数
+ * name 为系统调用名， 与 __NR_ 组合形成上面声明的系统调用符号常数，从而对系统低哦啊用表中的函数指针进行寻址
+ * type 返回值类型
+*/
 #define _syscall0(type,name) \
 type name(void) \
 { \
 long __res; \
-__asm__ volatile ("int $0x80" \
-	: "=a" (__res) \
-	: "0" (__NR_##name)); \
-if (__res >= 0) \
+__asm__ volatile ("int $0x80"\//调用系统中断 0x80
+	: "=a" (__res)\//返回值 ==> eax(__res)
+	: "0" (__NR_##name)); \//输入系统中断调用号 __NR_name
+if (__res >= 0) \//返回值 >= 0 直接返回
 	return (type) __res; \
-errno = -__res; \
+errno = -__res; \// 其他情况表明有错误，设置出错号
 return -1; \
 }
 

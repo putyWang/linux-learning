@@ -44,6 +44,10 @@ static void free_dind(int dev,int block)
 	free_block(dev,block);
 }
 
+/**
+ * 
+ * @param inode i 节点结构指针
+*/
 void truncate(struct m_inode * inode)
 {
 	int i;

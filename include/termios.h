@@ -40,24 +40,27 @@ struct winsize {
 	unsigned short ws_ypixel;
 };
 
-#define NCC 8
+/**
+ * AT&T 系统 V 的 termio 结构
+ */
+#define NCC 8 //termio 结构中控制字符数组的长度
 struct termio {
-	unsigned short c_iflag;		/* input mode flags */
-	unsigned short c_oflag;		/* output mode flags */
-	unsigned short c_cflag;		/* control mode flags */
-	unsigned short c_lflag;		/* local mode flags */
-	unsigned char c_line;		/* line discipline */
-	unsigned char c_cc[NCC];	/* control characters */
-};
+	unsigned short c_iflag;		/* input mode flags */ // 输入模式标志
+	unsigned short c_oflag;		/* output mode flags */ // 输出模式标志
+	unsigned short c_cflag;		/* control mode flags */ // 控制模式标志
+	unsigned short c_lflag;		/* local mode flags */ // 本地模式标志
+	unsigned char c_line;		/* line discipline */ // 线路规程（速率）
+	unsigned char c_cc[NCC];	/* control characters */ // 控制字符数组
+}; 
 
 #define NCCS 17
 struct termios {
-	unsigned long c_iflag;		/* input mode flags */
-	unsigned long c_oflag;		/* output mode flags */
-	unsigned long c_cflag;		/* control mode flags */
-	unsigned long c_lflag;		/* local mode flags */
-	unsigned char c_line;		/* line discipline */
-	unsigned char c_cc[NCCS];	/* control characters */
+	unsigned long c_iflag;		/* input mode flags */ // 输入模式标志
+	unsigned long c_oflag;		/* output mode flags */ // 输出模式标志
+	unsigned long c_cflag;		/* control mode flags */ // 控制模式标志
+	unsigned long c_lflag;		/* local mode flags */ // 本地模式标志
+	unsigned char c_line;		/* line discipline */ // 线路规程（速率）
+	unsigned char c_cc[NCCS];	/* control characters */ // 控制字符数组
 };
 
 /* c_cc characters */

@@ -79,6 +79,9 @@ int sys_sigaction(int signum, const struct sigaction * action,
 	return 0;
 }
 
+/**
+ * 
+*/
 void do_signal(long signr,long eax, long ebx, long ecx, long edx,
 	long fs, long es, long ds,
 	long eip, long cs, long eflags,

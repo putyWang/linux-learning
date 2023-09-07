@@ -7,8 +7,8 @@
 #define _HDREG_H
 
 /* Hd controller regs. Ref: IBM AT Bios-listing */
-#define HD_DATA		0x1f0	/* _CTL when writing */
-#define HD_ERROR	0x1f1	/* see err-bits */
+#define HD_DATA		0x1f0	/* _CTL when writing */ /*硬盘写端口*/
+#define HD_ERROR	0x1f1	/* see err-bits */ /*硬盘错误端口*/
 #define HD_NSECTOR	0x1f2	/* nr of sectors to read/write */
 #define HD_SECTOR	0x1f3	/* starting sector */
 #define HD_LCYL		0x1f4	/* starting cylinder */
@@ -24,7 +24,7 @@
 #define ERR_STAT	0x01
 #define INDEX_STAT	0x02
 #define ECC_STAT	0x04	/* Corrected error */
-#define DRQ_STAT	0x08
+#define DRQ_STAT	0x08 // 硬盘状态寄存器请求服务位
 #define SEEK_STAT	0x10
 #define WRERR_STAT	0x20
 #define READY_STAT	0x40
@@ -49,6 +49,9 @@
 #define ECC_ERR		0x40	/* ? */
 #define	BBD_ERR		0x80	/* ? */
 
+/**
+ * 硬盘分区结构
+*/
 struct partition {
 	unsigned char boot_ind;		/* 0x80 - active (unused) */
 	unsigned char head;		/* ? */
