@@ -45,6 +45,9 @@ static inline void wait_on_buffer(struct buffer_head * bh)
 	sti(); // 开启中断
 }
 
+/**
+ * 将所有i节点与缓冲同步到存储设备
+*/
 int sys_sync(void)
 {
 	int i;

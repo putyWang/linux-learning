@@ -2,53 +2,58 @@
 #define _UNISTD_H
 
 /* ok, this may be a joke, but I'm working on it */
-#define _POSIX_VERSION 198808L
+#define _POSIX_VERSION 198808L // 符号常数，指出符合 IEEE 标准 1003.1 实现的版本号，是一个整数值
 
-#define _POSIX_CHOWN_RESTRICTED	/* only root can do a chown (I think..) */
-#define _POSIX_NO_TRUNC		/* no pathname truncation (but see in kernel) */
-#define _POSIX_VDISABLE '\0'	/* character to disable things like ^C */
+#define _POSIX_CHOWN_RESTRICTED	// chown() 和 fchown() 的使用受限于进程的权限
+#define _POSIX_NO_TRUNC		// 长于（NAME_MAX）的路径名将产生错误，而不会自动截断
+#define _POSIX_VDISABLE '\0'	// 下面这个符号将定义成字符值，该值将禁止终端对其的处理
 /*#define _POSIX_SAVED_IDS */	/* we'll get to this yet */
 /*#define _POSIX_JOB_CONTROL */	/* we aren't there quite yet. Soon hopefully */
 
-#define STDIN_FILENO	0
-#define STDOUT_FILENO	1
-#define STDERR_FILENO	2
+#define STDIN_FILENO	0 // 标准输入文件句柄（描述符）号
+#define STDOUT_FILENO	1 // 标准输出文件句柄号
+#define STDERR_FILENO	2 // 标准出错文件句柄号
 
+// 定义空指针
 #ifndef NULL
 #define NULL    ((void *)0)
 #endif
 
 /* access */
-#define F_OK	0
-#define X_OK	1
-#define W_OK	2
-#define R_OK	4
+// 以下定义的符号常数用于 access() 文件访问函数
+#define F_OK	0 // 检测文件是否存在
+#define X_OK	1 // 检测是否可执行（搜索）
+#define W_OK	2 // 检测是否可写
+#define R_OK	4 // 检测是否可读
 
 /* lseek */
-#define SEEK_SET	0
-#define SEEK_CUR	1
-#define SEEK_END	2
+// 以下符号常数用于 lseek() 和  fcntl() 函数
+#define SEEK_SET	0 // 将文件读写指针设置为偏移值
+#define SEEK_CUR	1 // 将文件读写指针设置为当前值加上偏移值
+#define SEEK_END	2 // 将文件读写指针设置为文件长度加上偏移值
 
 /* _SC stands for System Configuration. We don't use them much */
-#define _SC_ARG_MAX		1
-#define _SC_CHILD_MAX		2
-#define _SC_CLOCKS_PER_SEC	3
-#define _SC_NGROUPS_MAX		4
-#define _SC_OPEN_MAX		5
-#define _SC_JOB_CONTROL		6
-#define _SC_SAVED_IDS		7
-#define _SC_VERSION		8
+// 下面符号常数用于 sysconf() 函数
+#define _SC_ARG_MAX		    1 // 最大变量数
+#define _SC_CHILD_MAX		2 // 子进程最大数
+#define _SC_CLOCKS_PER_SEC	3 // 每秒嘀嗒数
+#define _SC_NGROUPS_MAX		4 // 最大组数
+#define _SC_OPEN_MAX		5 // 最大打开文件数
+#define _SC_JOB_CONTROL		6 // 作业控制
+#define _SC_SAVED_IDS		7 // 保存的标识符
+#define _SC_VERSION		    8 // 版本
 
 /* more (possibly) configurable things - now pathnames */
-#define _PC_LINK_MAX		1
-#define _PC_MAX_CANON		2
-#define _PC_MAX_INPUT		3
-#define _PC_NAME_MAX		4
-#define _PC_PATH_MAX		5
-#define _PC_PIPE_BUF		6
-#define _PC_NO_TRUNC		7
+// 下面符号常数用于 pathconf() 函数
+#define _PC_LINK_MAX		1 // 链接最大数
+#define _PC_MAX_CANON		2 // 最大常规文件数
+#define _PC_MAX_INPUT		3 // 最大输入长度
+#define _PC_NAME_MAX		4 // 名称最大长度
+#define _PC_PATH_MAX		5 // 路径最大长度
+#define _PC_PIPE_BUF		6 // 管道缓冲大小
+#define _PC_NO_TRUNC		7 // 文件名不阶段
 #define _PC_VDISABLE		8
-#define _PC_CHOWN_RESTRICTED	9
+#define _PC_CHOWN_RESTRICTED	9 // 该表宿主受限
 
 #include <sys/stat.h>
 #include <sys/times.h>
@@ -151,6 +156,13 @@ errno = -__res; \// 其他情况表明有错误，设置出错号
 return -1; \
 }
 
+/**
+ * 带 1 个参数的系统调用嵌入式汇编函数
+ * @param name 系统调用名， 与 __NR_ 组合形成上面声明的系统调用符号常数，从而对系统低哦啊用表中的函数指针进行寻址
+ * @param type 返回值类型
+ * @param atype 参数类型
+ * @param a 参数值
+*/
 #define _syscall1(type,name,atype,a) \
 type name(atype a) \
 { \
@@ -164,6 +176,15 @@ errno = -__res; \
 return -1; \
 }
 
+/**
+ * 带 2 个参数的系统调用嵌入式汇编函数
+ * @param name 系统调用名， 与 __NR_ 组合形成上面声明的系统调用符号常数，从而对系统低哦啊用表中的函数指针进行寻址
+ * @param type 返回值类型
+ * @param atype a 参数类型
+ * @param a a 参数值
+ * @param btype b 参数类型
+ * @param b b 参数值
+*/
 #define _syscall2(type,name,atype,a,btype,b) \
 type name(atype a,btype b) \
 { \
@@ -177,6 +198,17 @@ errno = -__res; \
 return -1; \
 }
 
+/**
+ * 带 2 个参数的系统调用嵌入式汇编函数
+ * @param name 系统调用名， 与 __NR_ 组合形成上面声明的系统调用符号常数，从而对系统低哦啊用表中的函数指针进行寻址
+ * @param type 返回值类型
+ * @param atype a 参数类型
+ * @param a a 参数值
+ * @param btype b 参数类型
+ * @param b b 参数值
+ * @param ctype c 参数类型
+ * @param c c 参数值
+*/
 #define _syscall3(type,name,atype,a,btype,b,ctype,c) \
 type name(atype a,btype b,ctype c) \
 { \
@@ -194,6 +226,7 @@ return -1; \
 
 extern int errno;
 
+// 对应各系统调用的函数原型定义
 int access(const char * filename, mode_t mode);
 int acct(const char * filename);
 int alarm(int sec);

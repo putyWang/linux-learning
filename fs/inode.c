@@ -70,6 +70,9 @@ void invalidate_inodes(int dev)
 	}
 }
 
+/**
+ * 将所有 i 节点同步到存储器
+*/
 void sync_inodes(void)
 {
 	int i;

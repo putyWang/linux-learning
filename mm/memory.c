@@ -238,6 +238,10 @@ int copy_page_tables(unsigned long from,unsigned long to,long size)
  * out of memory (either when trying to access page-table or
  * page.)
  */
+/**
+ * 
+ * 
+*/
 unsigned long put_page(unsigned long page,unsigned long address)
 {
 	unsigned long tmp, *page_table;
@@ -302,6 +306,9 @@ void do_wp_page(unsigned long error_code,unsigned long address)
 
 }
 
+/**
+ * 
+*/
 void write_verify(unsigned long address)
 {
 	unsigned long page;

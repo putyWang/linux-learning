@@ -218,7 +218,7 @@ _sys_execve:
 	lea EIP(%esp),%eax
 	pushl %eax
 	call _do_execve // 调用 do_execve 函数
-	addl $4,%esp
+	addl $4,%esp // 丢弃刚压栈参数
 	ret
 
 .align 2

@@ -6,7 +6,7 @@
  *  es deserves to die if it isn't careful.
  */
 /**
- * 将以地址 src 开始的 n 长度的数据 移动到 dest 处
+ * 将以地址 src 开始的 n 长度的数据复制到 dest 处（与String.h中定义的一致）
 */
 #define memcpy(dest,src,n) ({ \
 void * _res = dest; \

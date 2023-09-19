@@ -21,17 +21,24 @@ extern void write_verify(unsigned long address);
 
 long last_pid=0;
 
+/**
+ * 进程空间区写前验证函数
+ * @param addr 当前进程地址
+ * @param size 与 addr 相加这一段进程空间以页为单位执行写操作的检测操作
+*/
 void verify_area(void * addr,int size)
 {
 	unsigned long start;
-
+	// 将起始地址 start 调整为其所在页的左边界开始位置，同时相应地调整验证区域大小
 	start = (unsigned long) addr;
 	size += start & 0xfff;
+	// 将 start 位置设置为进程线性空间地址
 	start &= 0xfffff000;
+	// 将其转化为整个内存空间中的线性地址位置
 	start += get_base(current->ldt[2]);
 	while (size>0) {
 		size -= 4096;
-		write_verify(start);
+		write_verify(start); // 页面写验证，不可写时进行复制
 		start += 4096;
 	}
 }

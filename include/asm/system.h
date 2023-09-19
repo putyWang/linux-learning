@@ -74,6 +74,14 @@ __asm__ ("movw %%dx,%%ax\n\t" \ // 将偏移地址低字与选择符组合成描
 // &idt[n] 中断符描述表中的-偏移值，中断描述符类型 15， 特权级为 3， 中断程序偏移地址为 addr
 	_set_gate(&idt[n],15,3,addr)
 
+/**
+ * 设置段描述符函数
+ * @param gate_addr 描述符地址
+ * @param type 描述符中类型域值
+ * @param dpl 描述符特权层级
+ * @param base 段基址
+ * @param limit 段限长
+*/
 #define _set_seg_desc(gate_addr,type,dpl,base,limit) {\
 	*(gate_addr) = ((base) & 0xff000000) | \
 		(((base) & 0x00ff0000)>>16) | \
@@ -86,9 +94,9 @@ __asm__ ("movw %%dx,%%ax\n\t" \ // 将偏移地址低字与选择符组合成描
 
 /**
  * 在全表中设置任务状态段/局部表描述符
- * n 全局表中描述项 n 所对应地址
- * addr 状态段/局部表所在内存的基地址
- * type 描述中标志类型字节
+ * @param n 全局表中描述项 n 所对应地址
+ * @param addr 状态段/局部表所在内存的基地址
+ * @param type 描述中标志类型字节
 */
 #define _set_tssldt_desc(n,addr,type) \
 __asm__ ("movw $104,%1\n\t" \ // 将 TSS 长度（144）放入长度域
@@ -105,15 +113,15 @@ __asm__ ("movw $104,%1\n\t" \ // 将 TSS 长度（144）放入长度域
 
 /**
  * 在全局表中设置任务状态段描述符
- * n 描述符指针
- * addr 描述符中的基地址值
- * 0x89 任务状态段描述符类型
+ * @param n 描述符指针
+ * @param addr 描述符中的基地址值
+ * @param 0x89 任务状态段描述符类型
 */
 #define set_tss_desc(n,addr) _set_tssldt_desc(((char *) (n)),addr,"0x89")
 /**
  * 在全局表中设置局部表描述符
- * n 描述符指针
- * addr 描述符中的基地址值
- * 0x82 局部表描述符类型
+ * @param n 描述符指针
+ * @param addr 描述符中的基地址值
+ * @param 0x82 局部表描述符类型
 */
 #define set_ldt_desc(n,addr) _set_tssldt_desc(((char *) (n)),addr,"0x82")

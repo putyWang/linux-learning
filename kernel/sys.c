@@ -13,6 +13,7 @@
 #include <sys/times.h>
 #include <sys/utsname.h>
 
+// 返回日期和时间（未实现）
 int sys_ftime()
 {
 	return -ENOSYS;
@@ -23,16 +24,19 @@ int sys_break()
 	return -ENOSYS;
 }
 
+// 用于当前进程对子进程进行调试（未实现）
 int sys_ptrace()
 {
 	return -ENOSYS;
 }
 
+// 改变并打印终端行设置（未实现）
 int sys_stty()
 {
 	return -ENOSYS;
 }
 
+// 取终端行设置信息（未实现）
 int sys_gtty()
 {
 	return -ENOSYS;
@@ -203,6 +207,9 @@ int sys_getpgrp(void)
 	return current->pgrp;
 }
 
+/**
+ * 
+*/
 int sys_setsid(void)
 {
 	if (current->leader && !suser())

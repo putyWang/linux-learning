@@ -43,30 +43,42 @@ extern int sys_close(int fd);
  * memory and creates the pointer tables from them, and puts their
  * addresses on the "stack", returning the new stack pointer value.
  */
+/**
+ * 在新用户堆栈中创建环境和参数变量指针表
+ * @param p 以数据段为起点的参数和环境信息偏移指针
+ * @param argc 参数个数
+ * @param envc 环境变量数
+ * @return 堆栈指针
+*/
 static unsigned long * create_tables(char * p,int argc,int envc)
 {
 	unsigned long *argv,*envp;
 	unsigned long * sp;
-
+	// 堆栈指针是以 4 字节（1节）为边界寻址的，因此这里让 sp 为 4 的整数倍
 	sp = (unsigned long *) (0xfffffffc & (unsigned long) p);
+	// sp 向下移动，空出环境参数所占的空间个数，并让环境参数指针 envp 指向该处
 	sp -= envc+1;
 	envp = sp;
+	// sp 向下移动，空出命令行参数所占的空间个数，并让命令行参数指针 argv 指向该处
 	sp -= argc+1;
 	argv = sp;
+	// 将环境参数指针、命令行参数指针与参数个数压入堆栈
 	put_fs_long((unsigned long)envp,--sp);
 	put_fs_long((unsigned long)argv,--sp);
 	put_fs_long((unsigned long)argc,--sp);
+	// 将命令行参数放入前面空出来的相应地方，最后放入一个 NULL 字符
 	while (argc-->0) {
 		put_fs_long((unsigned long) p,argv++);
 		while (get_fs_byte(p++)) /* nothing */ ;
 	}
 	put_fs_long(0,argv);
+	// 将环境参数放入前面空出来的相应地方，最后放入一个 NULL 字符
 	while (envc-->0) {
 		put_fs_long((unsigned long) p,envp++);
 		while (get_fs_byte(p++)) /* nothing */ ;
 	}
 	put_fs_long(0,envp);
-	return sp;
+	return sp; // 返回最新的堆栈指针
 }
 
 /*
@@ -151,22 +163,32 @@ static unsigned long copy_strings(int argc,char ** argv,unsigned long *page,
 	return p;
 }
 
+/**
+ * 修改局部描述表中的描述符基址和段限长，并将参数和环境空间页面放置在数据段末端
+ * @param text_size 执行文件头中 a_text 字段的给出的代码段长度值
+ * @param page 参数和环境空间页面指针
+ * @return 数据段限长值（64MB）
+*/
 static unsigned long change_ldt(unsigned long text_size,unsigned long * page)
 {
 	unsigned long code_limit,data_limit,code_base,data_base;
 	int i;
 
+	// 根据 text_size 计算以页面长度为边界的代码段限长
 	code_limit = text_size+PAGE_SIZE -1;
 	code_limit &= 0xFFFFF000;
-	data_limit = 0x4000000;
-	code_base = get_base(current->ldt[1]);
+	data_limit = 0x4000000; // 设置代码段长度为 64 MB
+	// 将代码段基址与数据段基址全部设置为当前进程中的代码段描述符表中的代码段基址
+	code_base = get_base(current->ldt[1]); 
 	data_base = code_base;
+	// 设置当前进程的代码段与数据段描述符基址与限长
 	set_base(current->ldt[1],code_base);
 	set_limit(current->ldt[1],code_limit);
 	set_base(current->ldt[2],data_base);
 	set_limit(current->ldt[2],data_limit);
 /* make sure fs points to the NEW data segment */
-	__asm__("pushl $0x17\n\tpop %%fs"::);
+	__asm__("pushl $0x17\n\tpop %%fs"::); // fs段寄存器中放入局部表数据段描述符的选择符（0x17）+
+	// 将参数与环境空已存放数据的页面放到数据段线性地址的末端
 	data_base += data_limit;
 	for (i=MAX_ARG_PAGES-1 ; i>=0 ; i--) {
 		data_base -= PAGE_SIZE;
@@ -323,17 +345,20 @@ restart_interp:
 	}
 	brelse(bh);// 释放该缓冲区
 	// 下面对执行头信息进行处理
+	// 当执行文件不是需求页可执行文件、代码重定位部分长度 a_trsize 不等于 0 、数据重定位信息长度补等于 0、代码段+数据段+堆段长度超过 50MB 或 i 节点表明的该执行文件长度小于代码段 + 数据段 + 符号表长度 + 执行头部分长度的总和时不执行程序
 	if (N_MAGIC(ex) != ZMAGIC || ex.a_trsize || ex.a_drsize ||
 		ex.a_text+ex.a_data+ex.a_bss>0x3000000 ||
 		inode->i_size < ex.a_text+ex.a_data+ex.a_syms+N_TXTOFF(ex)) {
 		retval = -ENOEXEC;
 		goto exec_error2;
 	}
+	// 执行文件的执行头部长度不等于一个内存块大小（1024 字节），该文件也无法执行544
 	if (N_TXTOFF(ex) != BLOCK_SIZE) {
 		printk("%s: N_TXTOFF != BLOCK_SIZE. See a.out.h.", filename);
 		retval = -ENOEXEC;
 		goto exec_error2;
 	}
+	// 如果 sh_bang 标志位没有设置，表明环境变量页面未被设置，则需要复制指定个数个环境变量字符串到参数与环境空间之中
 	if (!sh_bang) {
 		p = copy_strings(envc,envp,page,p,0);
 		p = copy_strings(argc,argv,page,p,0);
@@ -343,31 +368,44 @@ restart_interp:
 		}
 	}
 /* OK, This is the point of no return */
+	// 若源程序也是一个可执行文件，则释放其 i 节点，并让进程 executable 指向新程序 i 节点
 	if (current->executable)
 		iput(current->executable);
 	current->executable = inode;
+	// 复位所有信号处理句柄
 	for (i=0 ; i<32 ; i++)
 		current->sigaction[i].sa_handler = NULL;
+	// 根据执行时关闭位图中文件句柄位图标志，关闭指定打开文件，，并对该标志进行复位
 	for (i=0 ; i<NR_OPEN ; i++)
 		if ((current->close_on_exec>>i)&1)
 			sys_close(i);
 	current->close_on_exec = 0;
+	// 根据指定的基地址和限长，释放源程序代码代码段和数据段所对应的页表内存块指定的内存块及页表本身
 	free_page_tables(get_base(current->ldt[1]),get_limit(0x0f));
 	free_page_tables(get_base(current->ldt[2]),get_limit(0x17));
+	// 如果上次任务使用了协处理器指向的是当前进程，将其置空，并复位该标志位
 	if (last_task_used_math == current)
 		last_task_used_math = NULL;
 	current->used_math = 0;
+	// 根据 a_text 修改局部表中描述符基址与限长，并将参数和环境空间页面放置在数据段的末端
+	// 执行下面语句之后，p 此时是以数据段起始处为原点的偏移值，仍指向参数和环境空间数据开始处，即转换为堆栈指针
 	p += change_ldt(ex.a_text,page)-MAX_ARG_PAGES*PAGE_SIZE;
 	p = (unsigned long) create_tables((char *)p,argc,envc);
+	// 将当前的各个字段设置为新执行程序的信息
 	current->brk = ex.a_bss +
 		(current->end_data = ex.a_data +
 		(current->end_code = ex.a_text));
+	// 将进程堆栈开始字段设置为堆栈指针所在页面，并设置进程用户id与组id
 	current->start_stack = p & 0xfffff000;
 	current->euid = e_uid;
 	current->egid = e_gid;
+	// 初始化一页 bss 数据段（全设置为 0）
 	i = ex.a_text+ex.a_data;
 	while (i&0xfff)
 		put_fs_byte(0,(char *) (i++));
+	// 将原调用系统中断的程序在堆栈上的代码指针替换为新执行程序的入口点
+	// 并将堆栈指针替换为新执行程序的堆栈指针
+	// 返回指令将弹出这些堆栈数据并使得 CPU 去执行新的程序而不是返回到原调用系统中断的程序中去了
 	eip[0] = ex.a_entry;		/* eip, magic happens :-) */
 	eip[3] = p;			/* stack pointer */
 	return 0;
