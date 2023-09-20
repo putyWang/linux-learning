@@ -4,7 +4,7 @@
 #include <sys/types.h>
 
 /**
- * 
+ * 设备文件的状态信息结构
 */
 struct stat {
 	dev_t	st_dev;   // 含有文件的设备号
