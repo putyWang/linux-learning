@@ -72,22 +72,32 @@ static void kill_session(void)
  * XXX need to check permissions needed to send signals to process
  * groups, etc. etc.  kill() permissions semantics are tricky!
  */
+/**
+ * 用于向任意进程或进程组发送任何信号
+ * @param pid >0 信号发送给进程号为 pid 的进程.=0 发送给当前进程组的所有进程,=-1 发送给除第一个进程外的所有进程,<-1 发送给进程组号为 -pid 的所有进程
+ * @param sig 为 0 时，不发送任何信号，但仍会进行错误检查
+ * @return 成功 0，失败 错误码
+*/
 int sys_kill(int pid,int sig)
 {
 	struct task_struct **p = NR_TASKS + task;
 	int err, retval = 0;
 
+	// pid=0 发送给当前进程组的所有进程
 	if (!pid) while (--p > &FIRST_TASK) {
 		if (*p && (*p)->pgrp == current->pid) 
 			if (err=send_sig(sig,*p,1))
 				retval = err;
+	// pid>0 信号发送给进程号为 pid 的进程
 	} else if (pid>0) while (--p > &FIRST_TASK) {
 		if (*p && (*p)->pid == pid) 
 			if (err=send_sig(sig,*p,0))
 				retval = err;
+	// pid=-1 发送给除第一个进程外的所有进程
 	} else if (pid == -1) while (--p > &FIRST_TASK)
 		if (err = send_sig(sig,*p,0))
 			retval = err;
+	// pid<-1 发送给进程组号为 -pid 的所有进程
 	else while (--p > &FIRST_TASK)
 		if (*p && (*p)->pgrp == -pid)
 			if (err = send_sig(sig,*p,0))
@@ -115,7 +125,7 @@ static void tell_father(int pid)
 /* if we don't find any fathers, we just release ourselves */
 /* This is not really OK. Must change it to make father 1 */
 	printk("BAD BAD - no father found\n\r");
-	release(current);
+	release(current); // 未找到父进程 自己释放
 }
 
 /**
@@ -172,6 +182,10 @@ int do_exit(long code)
 	return (-1);	/* just to suppress warnings */
 }
 
+/**
+ * 系统调用 exit 函数
+ * @param error_code 错误码
+*/
 int sys_exit(int error_code)
 {
 	return do_exit((error_code&0xff)<<8);

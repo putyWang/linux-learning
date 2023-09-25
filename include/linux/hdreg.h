@@ -7,16 +7,16 @@
 #define _HDREG_H
 
 // 硬盘控制器寄存器端口
-#define HD_DATA		0x1f0	    // 硬盘写端口
-#define HD_ERROR	0x1f1	    // 硬盘错误端口
-#define HD_NSECTOR	0x1f2	    /* nr of sectors to read/write */
-#define HD_SECTOR	0x1f3	    /* starting sector */
-#define HD_LCYL		0x1f4	    /* starting cylinder */
-#define HD_HCYL		0x1f5	    /* high byte of starting cyl */
-#define HD_CURRENT	0x1f6	    /* 101dhhhh , d=drive, hhhh=head */
-#define HD_STATUS	0x1f7	    /* see status-bits */
-#define HD_PRECOMP HD_ERROR	    /* same io address, read=error, write=precomp */
-#define HD_COMMAND HD_STATUS	/* same io address, read=status, write=cmd */
+#define HD_DATA		0x1f0	    // 数据寄存器端口（扇区数据-读、写、格式化）
+#define HD_ERROR	0x1f1	    // 读-硬盘错误端口（错误状态），写-写前预补偿寄存器
+#define HD_NSECTOR	0x1f2	    // 扇区寄存器（扇区数-读、写、检验、格式化）
+#define HD_SECTOR	0x1f3	    // 扇区号寄存器（扇区号-读、写、检验）
+#define HD_LCYL		0x1f4	    // 柱面号低 8 位寄存器（柱面号低字节-读、写、检验、格式化）
+#define HD_HCYL		0x1f5	    // 柱面号高 2 位寄存器（柱面号高字节-读、写、检验、格式化）
+#define HD_CURRENT	0x1f6	    // 驱动号/磁头寄存器（驱动器号/磁头号-101dhhhh，d=驱动器号，h=磁头号）
+#define HD_STATUS	0x1f7	    // 读-主状态寄存器，写-命令寄存器
+#define HD_PRECOMP HD_ERROR	    // 写-硬盘控制寄存器
+#define HD_COMMAND HD_STATUS	// 读-数字输出寄存器（与 1.2MB 软盘合用）
 
 #define HD_CMD		0x3f6       // 控制寄存器端口
 
@@ -50,19 +50,19 @@
 #define	BBD_ERR		0x80	// （坏扇区）
 
 /**
- * 硬盘分区结构
+ * 硬盘分区表结构
 */
 struct partition {
-	unsigned char boot_ind;		/* 0x80 - active (unused) */
-	unsigned char head;		/* ? */
-	unsigned char sector;		/* ? */
-	unsigned char cyl;		/* ? */
-	unsigned char sys_ind;		/* ? */
-	unsigned char end_head;		/* ? */
-	unsigned char end_sector;	/* ? */
-	unsigned char end_cyl;		/* ? */
-	unsigned int start_sect;	/* starting sector counting from 0 */
-	unsigned int nr_sects;		/* nr of sectors in partition */
+	unsigned char boot_ind;		// 引导标志，4 个分区中同时只能有一个分区是可引导的（0x00-不从该分区引导操作系统，0x80-从该分区引导操作系统）
+	unsigned char head;			// 分区起始磁头号
+	unsigned char sector;		// 分区起始扇区号（位 0-5）和起始柱面号高 2 位（位 6-7）
+	unsigned char cyl;			// 分区起始柱面号低 8 位
+	unsigned char sys_ind;		// 分区类型字节（0x0b-DOS,0x80-Old MINIX,0x83-Linux）
+	unsigned char end_head;		// 分区结束磁头号
+	unsigned char end_sector;	// 结束扇区号（位 0-5 ）和结束柱面号高 2 位（位 6-7）
+	unsigned char end_cyl;		// 分区结束柱面号低 8 位
+	unsigned int start_sect;	// 分区起始物理扇区号
+	unsigned int nr_sects;		// 分区占用的扇区数
 };
 
 #endif

@@ -20,20 +20,28 @@
 
 #include <signal.h>
 
-#define _S(nr) (1<<((nr)-1))
-#define _BLOCKABLE (~(_S(SIGKILL) | _S(SIGSTOP)))
+#define _S(nr) (1<<((nr)-1))	// 获取信号 nr 在信号位图中对应位的二进制数值，信号编码 1～32
+#define _BLOCKABLE (~(_S(SIGKILL) | _S(SIGSTOP))) // 除了 SIGKILL 与 SIGSTOP 其他型号都是可阻塞的
 
+/**
+ * 显示任务号 nr 的进程号、进程状态和内核堆栈空闲字节数
+ * @param nr 任务号
+ * @param p 进程数据结构
+*/
 void show_task(int nr,struct task_struct * p)
 {
 	int i,j = 4096-sizeof(struct task_struct);
 
 	printk("%d: pid=%d, state=%d, ",nr,p->pid,p->state);
 	i=0;
-	while (i<j && !((char *)(p+1))[i])
+	while (i<j && !((char *)(p+1))[i]) // 检测指定任务数据结构以后等于 0 的字节数
 		i++;
 	printk("%d (of %d) chars free in kernel stack\n\r",i,j);
 }
 
+/**
+ * 展示当前所有任务的进程信息
+*/
 void show_stat(void)
 {
 	int i;
@@ -43,10 +51,7 @@ void show_stat(void)
 			show_task(i,task[i]);
 }
 
-/**
- * 8253 定时器计数初始值
-*/
-#define LATCH (1193180/HZ)
+#define LATCH (1193180/HZ) // 设置定时芯片 8253 的计数初值
 
 extern void mem_use(void);
 
@@ -63,41 +68,42 @@ union task_union {
 
 static union task_union init_task = {INIT_TASK,}; //定义第一个进程（0）的初始化数据
 
-long volatile jiffies=0; // 从电脑开机时到现在的所有时钟滴答总数
-long startup_time=0; // 从 1970:0:0:0 到开机时间计时的秒数
-struct task_struct *current = &(init_task.task); // 当前进程
-struct task_struct *last_task_used_math = NULL; // 使用过协处理器的进程指针
+long volatile jiffies=0; 	// 从电脑开机时到现在的所有时钟滴答总数
+long startup_time=0; 		// 从 1970:0:0:0 到开机时间计时的秒数
+struct task_struct *current = &(init_task.task); 	// 当前进程
+struct task_struct *last_task_used_math = NULL; 	// 使用过协处理器的进程指针
 
-/**
- * 进程表
- * 初始化只有进程 0 一项
-*/
-struct task_struct * task[NR_TASKS] = {&(init_task.task), };
+struct task_struct * task[NR_TASKS] = {&(init_task.task), };	// 进程指针数组
 
 long user_stack [ PAGE_SIZE>>2 ] ; // 定义堆栈 任务 0 的用户态，4K
 
+/**
+ * 设置堆栈 ss:esp(数据段选择符，指针)，指针指在最后一项
+*/
 struct {
 	long * a;
 	short b;
 	} stack_start = { & user_stack [PAGE_SIZE>>2] , 0x10 };
-/*
- *  'math_state_restore()' saves the current math information in the
- * old math state array, and gets the new ones from the current task
- */
+
+/**
+ * 当任务被调度交换过以后，
+ * 该函数用以保存原任务的协处理器状态（上下文）并恢复新调度进来的当前任务的协处理器的执行状态
+*/
 void math_state_restore()
 {
-	if (last_task_used_math == current)
+	if (last_task_used_math == current) // 任务没变则返回
 		return;
-	__asm__("fwait");
-	if (last_task_used_math) {
+	__asm__("fwait"); // 发送协处理器命令之前要先发 WAIT 命令 
+	if (last_task_used_math) { // 若果上个任务使用了协处理器，则保存其状态
 		__asm__("fnsave %0"::"m" (last_task_used_math->tss.i387));
 	}
-	last_task_used_math=current;
+	last_task_used_math=current; // 然后将 last_task_used_math 指向当前任务
+	// 当前用过协处理器，则恢复其状态
 	if (current->used_math) {
 		__asm__("frstor %0"::"m" (current->tss.i387));
 	} else {
-		__asm__("fninit"::);
-		current->used_math=1;
+		__asm__("fninit"::); // 否则第一次使用，初始化
+		current->used_math=1; // 将当前是否使用协处理器位置位
 	}
 }
 
@@ -134,18 +140,18 @@ void schedule(void)
 			(*p)->state==TASK_INTERRUPTIBLE)
 				(*p)->state=TASK_RUNNING; // 置进程为就绪状态
 		}
-/* this is the scheduler proper: */
 
+	// 调度程序的主要部分
 	while (1) {
-		c = -1;
-		next = 0;
+		c = -1; // 存储最大时间片
+		next = 0; // 指向即将切换的进程索引
 		i = NR_TASKS;
 		p = &task[NR_TASKS];
 		// 从进程表中最后一个进程向前遍历
 		while (--i) {
 			if (!*--p)
 				continue;
-			// 对比处于就绪态进程所拥有的剩余时间片
+			// 对比处于就绪态进程所拥有的剩余时间片（查找剩余时间片最大的进程）
 			if ((*p)->state == TASK_RUNNING && (*p)->counter > c)
 				// 将 next 指向剩余最多时间片表项 索引
 				c = (*p)->counter, next = i;
@@ -163,7 +169,9 @@ void schedule(void)
 }
 
 /**
- * 退出一下当前进程， 等待所有进程执行完后再执行
+ * 将当前进程转化为可中断的等待状态，并重新调度
+ * 该系统调用将导致进程进入睡眠状态，直到收到一个信号，
+ * 该信号用于终止进程或者使进程调用一个信号捕获函数，只有当捕获了一个信号并且信号捕获处理函数返回，pause() 才会返回
 */
 int sys_pause(void)
 {
@@ -172,22 +180,34 @@ int sys_pause(void)
 	return 0;
 }
 
+/**
+ * 把任务置为不可中断的等待状态，并让睡眠队列头指针指向当前进程
+ * 只有在明确被唤醒时才会返回
+ * @param *p 等待任务的队列头指针
+*/
 void sleep_on(struct task_struct **p)
 {
 	struct task_struct *tmp;
-
+	// 指针无效直接返回
 	if (!p)
 		return;
+	// 0进程不允许睡眠
 	if (current == &(init_task.task))
 		panic("task[0] trying to sleep");
 	tmp = *p;
-	*p = current;
-	current->state = TASK_UNINTERRUPTIBLE;
-	schedule();
+	*p = current; // 睡眠队列指向当前进程
+	current->state = TASK_UNINTERRUPTIBLE; // 将当前进程状态修改为不可中断的等待状态
+	schedule(); // 重新调度进程
+	// 只有等待任务被唤醒后，程序才会重新执行到此处
+	// 由于大家都是在等待同一个资源，在资源可用时，就有必要唤醒所有等待该进程的进程（该函数为嵌套使用）
 	if (tmp)
 		tmp->state=0;
 }
 
+/**
+ * 将当前任务置为可中断的等待状态
+ * @param *p 等待任务的队列头指针
+*/
 void interruptible_sleep_on(struct task_struct **p)
 {
 	struct task_struct *tmp;
@@ -200,19 +220,27 @@ void interruptible_sleep_on(struct task_struct **p)
 	*p=current;
 repeat:	current->state = TASK_INTERRUPTIBLE;
 	schedule();
+	// 如果等待队列中还有等待任务，并且队列头指针指向的任务不是当前任务时，则将该等待任务置为就绪状态并重新执行调度程序
+	// 当指针 *p 所指向的不是当前任务时，表示在当前任务被放入队列后又有新的被插入队列之中，因此旧影将所有其他等待任务也只为可运行态
 	if (*p && *p != current) {
 		(**p).state=0;
 		goto repeat;
 	}
+	// 该句代码应该为 *p=tmp，意在在队列头指针指向其余等待任务，否则在当前任务之前插入等待队列的任务全部被抹除掉了
 	*p=NULL;
 	if (tmp)
 		tmp->state=0;
 }
 
+/**
+ * 唤醒指定任务 *p
+ * @param *p 为任务等待队列头指针
+*/
 void wake_up(struct task_struct **p)
 {
 	if (p && *p) {
 		(**p).state=0;
+		// 该句代码应该为 *p=tmp，意在在队列头指针指向其余等待任务，否则在当前任务之前插入等待队列的任务全部被抹除掉了
 		*p=NULL;
 	}
 }
@@ -262,23 +290,29 @@ int ticks_to_floppy_on(unsigned int nr)
 
 /**
  * 开启指定软驱电动机
+ * @param nr 指定软驱句柄
 */
 void floppy_on(unsigned int nr)
 {
-	cli();
+	cli(); // 禁止中断
+	// 等待软驱启动
 	while (ticks_to_floppy_on(nr))
 		sleep_on(nr+wait_motor);
-	sti();
+	sti(); // 开启中断
 }
 
-// 关闭指定软驱
+/**
+ * 关闭指定软驱电动机
+ * @param nr 指定软驱句柄
+*/
 void floppy_off(unsigned int nr)
 {
-	moff_timer[nr]=3*HZ;
+	moff_timer[nr]=3*HZ; // 3 秒
 }
 
 /**
  * 软盘定时处理子程序
+ * 在每次时钟中断调用 do_timer 时被调用
 */
 void do_floppy_timer(void)
 {
@@ -292,7 +326,7 @@ void do_floppy_timer(void)
 		if (mon_timer[i]) { // 启动器定时不为0时
 			if (!--mon_timer[i])
 				wake_up(i+wait_motor); // 电动机启动时间到了唤醒对应进程
-		} else if (!moff_timer[i]) { // 电动停转计时移到
+		} else if (!moff_timer[i]) { // 电动停转计时已到
 			current_DOR &= ~mask; // 复位对应的电动机启动位
 			outb(current_DOR,FD_DOR); // 更新数字输出寄存器
 		} else
@@ -305,7 +339,6 @@ void do_floppy_timer(void)
 /**
  * 定时器数组和定时器链表结构
  * next_timer 定时器链表头指针
- * 
 */
 static struct timer_list {
 	long jiffies; // 时钟滴答数
@@ -401,6 +434,11 @@ void do_timer(long cpl)
 	schedule();
 }
 
+/**
+ * 设置报警定时系统调用
+ * @param seconds 报警时间（秒数）
+ * @return 设置过返回旧值，否则返回0
+*/
 int sys_alarm(long seconds)
 {
 	int old = current->alarm;
@@ -411,36 +449,59 @@ int sys_alarm(long seconds)
 	return (old);
 }
 
+/**
+ * 获取当前进程号
+*/
 int sys_getpid(void)
 {
 	return current->pid;
 }
 
+/**
+ * 获取当前进程父进程进程号
+*/
 int sys_getppid(void)
 {
 	return current->father;
 }
 
+/**
+ * 获取当前进程用户号id
+*/
 int sys_getuid(void)
 {
 	return current->uid;
 }
 
+/**
+ * 获取当前进程有效用户id
+*/
 int sys_geteuid(void)
 {
 	return current->euid;
 }
 
+/**
+ * 获取当前进程组号
+*/
 int sys_getgid(void)
 {
 	return current->gid;
 }
 
+/**
+ * 获取当前有效组号
+*/
 int sys_getegid(void)
 {
 	return current->egid;
 }
 
+/**
+ * 降低当前优先权值
+ * @param increment 降低的数
+ * @return 0
+*/
 int sys_nice(long increment)
 {
 	if (current->priority-increment>0)

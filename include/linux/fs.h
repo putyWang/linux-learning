@@ -23,31 +23,31 @@
 
 #define IS_SEEKABLE(x) ((x)>=1 && (x)<=3) // 是不是可以寻找定位的设备
 
-#define READ 0      // 磁盘读命令
-#define WRITE 1     // 磁盘写命令码
-#define READA 2		// 预读命令
-#define WRITEA 3	// 预写命令
+#define READ 0      					// 磁盘读命令
+#define WRITE 1     					// 磁盘写命令码
+#define READA 2							// 预读命令
+#define WRITEA 3						// 预写命令
 
-void buffer_init(long buffer_end); // 初始化缓冲函数原型
+void buffer_init(long buffer_end); 		// 初始化缓冲函数原型
 
-#define MAJOR(a) (((unsigned)(a))>>8) // 取高字节（主设备号）
-#define MINOR(a) ((a)&0xff) // 取低字节（次设备号）
+#define MAJOR(a) (((unsigned)(a))>>8) 	// 取高字节（主设备号）
+#define MINOR(a) ((a)&0xff)				// 取低字节（次设备号）
 
-#define NAME_LEN 14 // 文件夹名最大长度值
-#define ROOT_INO 1  // 根 i 节点
+#define NAME_LEN 14 					// 文件夹名最大长度值
+#define ROOT_INO 1  					// 根 i 节点
 
-#define I_MAP_SLOTS 8 // i节点位图槽数
-#define Z_MAP_SLOTS 8 // 逻辑块（区段块）位图槽数
-#define SUPER_MAGIC 0x137F // minix 文件系统中魔数
+#define I_MAP_SLOTS 8 					// i节点位图槽数
+#define Z_MAP_SLOTS 8 					// 逻辑块（区段块）位图槽数
+#define SUPER_MAGIC 0x137F 				// minix 文件系统中魔数
 
-#define NR_OPEN 20 // 单个进程打开文件数最大值
-#define NR_INODE 32 // i 节点数组最大数量
-#define NR_FILE 64 // 文件最大数
-#define NR_SUPER 8 // 超级块最大数
-#define NR_HASH 307 /*缓冲区头哈希表 具有307项*/
+#define NR_OPEN 20 						// 单个进程打开文件数最大值
+#define NR_INODE 32 					// i 节点数组最大数量
+#define NR_FILE 64 						// 文件最大数
+#define NR_SUPER 8 						// 超级块最大数
+#define NR_HASH 307 					// 缓冲区头哈希表 具有307项
 #define NR_BUFFERS nr_buffers
-#define BLOCK_SIZE 1024  // 数据块长度
-#define BLOCK_SIZE_BITS 10 // 数据块长度所占的比特位数
+#define BLOCK_SIZE 1024  				// 数据块长度
+#define BLOCK_SIZE_BITS 10 				// 数据块长度所占的比特位数（4B）
 #ifndef NULL
 #define NULL ((void *) 0)
 #endif

@@ -96,26 +96,26 @@ int copy_process(int nr,long ebp,long edi,long esi,long gs,long none,
 	int i;
 	struct file *f;
 
-	p = (struct task_struct *) get_free_page(); // 为新进程数据结构分配进程
+	p = (struct task_struct *) get_free_page(); // 为新进程数据结构获取物理内存
 	if (!p) // 分配出错 返回错误码
 		return -EAGAIN;
 	task[nr] = p;
-	*p = *current;	/* NOTE! this doesn't copy the supervisor stack */ // 复制当前进程内容
+	*p = *current;	/* NOTE! this doesn't copy the supervisor stack */ // 复制当前进程结构信息
 	p->state = TASK_UNINTERRUPTIBLE; // 进程状态设置为不可中断等待状态
 	p->pid = last_pid; // 设置进程号
 	p->father = current->pid; // 父进程为当前进程
-	p->counter = p->priority;
+	p->counter = p->priority; // 初始化剩余时间片为优先权大小
 	p->signal = 0; // 初始化信号量为 0
 	p->alarm = 0; // 初始化 alarm 为 0
 	p->leader = 0;		/* process leadership doesn't inherit */
-	p->utime = p->stime = 0; // 初始化系统态运行时间为 0
-	p->cutime = p->cstime = 0; // 初始化系统态运行时间为 0
+	p->utime = p->stime = 0; // 初始化本进程运行时间为 0
+	p->cutime = p->cstime = 0; // 初始化子进程运行时间为 0
 	p->start_time = jiffies; // 设置进程创建时间为当前时间
 	p->tss.back_link = 0;
-	p->tss.esp0 = PAGE_SIZE + (long) p;
-	p->tss.ss0 = 0x10;
-	p->tss.eip = eip;
-	p->tss.eflags = eflags;
+	p->tss.esp0 = PAGE_SIZE + (long) p; // 堆栈指针
+	p->tss.ss0 = 0x10; // 堆栈段选择符（内核数据段）
+	p->tss.eip = eip; // 指令代码指针
+	p->tss.eflags = eflags; // 标志寄存器 
 	p->tss.eax = 0; // 新进程返回 0 的原因
 	p->tss.ecx = ecx;
 	p->tss.edx = edx;

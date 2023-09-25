@@ -19,18 +19,33 @@
 #include <asm/segment.h>
 #include <asm/io.h>
 
+/**
+ * 取段中指定地址处的一个字节
+ * @param seg 段描述符
+ * @param addr 指定地址
+ * @return 指定字节
+*/
 #define get_seg_byte(seg,addr) ({ \
 register char __res; \
 __asm__("push %%fs;mov %%ax,%%fs;movb %%fs:%2,%%al;pop %%fs" \
 	:"=a" (__res):"0" (seg),"m" (*(addr))); \
 __res;})
 
+/**
+ * 取段中指定地址处的一个长字（4字节）
+ * @param seg 段描述符
+ * @param addr 指定地址
+ * @return 指定字节
+*/
 #define get_seg_long(seg,addr) ({ \
 register unsigned long __res; \
 __asm__("push %%fs;mov %%ax,%%fs;movl %%fs:%2,%%eax;pop %%fs" \
 	:"=a" (__res):"0" (seg),"m" (*(addr))); \
 __res;})
 
+/**
+ * 获取段寄存器 fs 的值（描述符）
+*/
 #define _fs() ({ \
 register unsigned short __res; \
 __asm__("mov %%fs,%%ax":"=a" (__res):); \
@@ -63,9 +78,9 @@ void irq13(void);
 /**
  * 打印出错中断的名称、出错号、调用程序的的 EIP、EFLAGGS、ESP、fs 段寄存器值、段的基址、段的长度、进程号 pid、任务号、10字节指令码；
  * 如果堆栈在用户段，则还打印 16 字节的堆栈内容
- * str 出错中断名称
- * esp_ptr 段寄存数组
- * nr 进程号
+ * @param str 出错中断名称
+ * @param esp_ptr 中断调用程序返回地址
+ * @param nr 进程号
 */
 static void die(char * str,long esp_ptr,long nr)
 {
@@ -91,22 +106,41 @@ static void die(char * str,long esp_ptr,long nr)
 	do_exit(11);		/* play segment exception */
 }
 
-// 以 do 开头的函数，对应名称中断处理程序调用的 c 函数
+/**
+ * 双错误中断调用 c 函数
+ * @param esp 调用中断处理程序返回指针
+ * @param error_code 错误码
+*/
 void do_double_fault(long esp, long error_code)
 {
 	die("double fault",esp,error_code);
 }
 
+/**
+ * 一般保护性出错中断调用 c 函数
+ * @param esp 调用中断处理程序返回指针
+ * @param error_code 错误码
+*/
 void do_general_protection(long esp, long error_code)
 {
 	die("general protection",esp,error_code);
 }
 
+/**
+ * 被 0 除出错中断调用 c 函数
+ * @param esp 调用中断处理程序返回指针
+ * @param error_code 错误码
+*/
 void do_divide_error(long esp, long error_code)
 {
 	die("divide error",esp,error_code);
 }
 
+/**
+ * 断点指令引起的中断调用 c 函数
+ * @param esp 调用中断处理程序返回指针
+ * @param error_code 错误码
+*/
 void do_int3(long * esp, long error_code,
 		long fs,long es,long ds,
 		long ebp,long esi,long edi,
@@ -114,7 +148,7 @@ void do_int3(long * esp, long error_code,
 {
 	int tr;
 
-	__asm__("str %%ax":"=a" (tr):"0" (0));
+	__asm__("str %%ax":"=a" (tr):"0" (0)); // 取任务寄存器段地址
 	printk("eax\t\tebx\t\tecx\t\tedx\n\r%8x\t%8x\t%8x\t%8x\n\r",
 		eax,ebx,ecx,edx);
 	printk("esi\t\tedi\t\tebp\t\tesp\n\r%8x\t%8x\t%8x\t%8x\n\r",
@@ -124,56 +158,111 @@ void do_int3(long * esp, long error_code,
 	printk("EIP: %8x   CS: %4x  EFLAGS: %8x\n\r",esp[0],esp[1],esp[2]);
 }
 
+/**
+ * 非屏蔽中断调用c 函数
+ * @param esp 调用中断处理程序返回指针
+ * @param error_code 错误码
+*/
 void do_nmi(long esp, long error_code)
 {
 	die("nmi",esp,error_code);
 }
 
+/**
+ * debug测试中断调用c 函数
+ * @param esp 调用中断处理程序返回指针
+ * @param error_code 错误码
+*/
 void do_debug(long esp, long error_code)
 {
 	die("debug",esp,error_code);
 }
 
+/**
+ * 溢出出错处理中断调用c 函数
+ * @param esp 调用中断处理程序返回指针
+ * @param error_code 错误码
+*/
 void do_overflow(long esp, long error_code)
 {
 	die("overflow",esp,error_code);
 }
 
+/**
+ * 边界检查（有效地址之外）出错中断调用c 函数
+ * @param esp 调用中断处理程序返回指针
+ * @param error_code 错误码
+*/
 void do_bounds(long esp, long error_code)
 {
 	die("bounds",esp,error_code);
 }
 
+/**
+ * 无效操作指令出错中断调用c 函数
+ * @param esp 调用中断处理程序返回指针
+ * @param error_code 错误码
+*/
 void do_invalid_op(long esp, long error_code)
 {
 	die("invalid operand",esp,error_code);
 }
 
+/**
+ * 协处理器不可用处理中断调用c 函数
+ * @param esp 调用中断处理程序返回指针
+ * @param error_code 错误码
+*/
 void do_device_not_available(long esp, long error_code)
 {
 	die("device not available",esp,error_code);
 }
 
+/**
+ * 协处理器段超出出错中断调用c 函数
+ * @param esp 调用中断处理程序返回指针
+ * @param error_code 错误码
+*/
 void do_coprocessor_segment_overrun(long esp, long error_code)
 {
 	die("coprocessor segment overrun",esp,error_code);
 }
 
+/**
+ * 无效的任务状态段出错处理中断调用c 函数
+ * @param esp 调用中断处理程序返回指针
+ * @param error_code 错误码
+*/
 void do_invalid_TSS(long esp,long error_code)
 {
 	die("invalid TSS",esp,error_code);
 }
 
+/**
+ * 段不存在出错处理中断调用c 函数
+ * @param esp 调用中断处理程序返回指针
+ * @param error_code 错误码
+*/
 void do_segment_not_present(long esp,long error_code)
 {
 	die("segment not present",esp,error_code);
 }
 
+/**
+ * 堆栈段错误处理中断调用c 函数
+ * @param esp 调用中断处理程序返回指针
+ * @param error_code 错误码
+*/
 void do_stack_segment(long esp,long error_code)
 {
 	die("stack segment",esp,error_code);
 }
 
+/**
+ * 协处理中断调用c 函数
+ * @param esp 调用中断处理程序返回指针
+ * @param error_code 错误码
+*/
 void do_coprocessor_error(long esp, long error_code)
 {
 	if (last_task_used_math != current)
@@ -181,6 +270,11 @@ void do_coprocessor_error(long esp, long error_code)
 	die("coprocessor error",esp,error_code);
 }
 
+/**
+ * 保留中断调用
+ * @param esp 调用中断处理程序返回指针
+ * @param error_code 错误码
+*/
 void do_reserved(long esp, long error_code)
 {
 	die("reserved (15,17-47) error",esp,error_code);

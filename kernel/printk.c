@@ -18,6 +18,10 @@ static char buf[1024];
 
 extern int vsprintf(char * buf, const char * fmt, va_list args);
 
+/**
+ * 内核使用的显示函数
+ * @param fmt 格式串
+*/
 int printk(const char *fmt, ...)
 {
 	va_list args;
@@ -32,7 +36,7 @@ int printk(const char *fmt, ...)
 		"pushl %0\n\t"
 		"pushl $_buf\n\t"
 		"pushl $0\n\t"
-		"call _tty_write\n\t"
+		"call _tty_write\n\t" // 调用 tty_write 函数，参数为 i(字符串长度)，buf(缓冲数组)，0(通道号 channel)
 		"addl $8,%%esp\n\t"
 		"popl %0\n\t"
 		"pop %%fs"

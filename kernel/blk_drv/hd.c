@@ -22,28 +22,32 @@
 #include <asm/io.h>
 #include <asm/segment.h>
 
-#define MAJOR_NR 3
+#define MAJOR_NR 3				// 硬盘主设备号时3（必须在包含进 blk.h 文件进行定义）
 #include "blk.h"
 
+/**
+ * 读 CMOS 参数宏函数（读取当前内核时间）
+ * @param addr 地址
+*/
 #define CMOS_READ(addr) ({ \
 outb_p(0x80|addr,0x70); \
 inb_p(0x71); \
 })
 
 /* Max read/write errors/sector */
-#define MAX_ERRORS	7 // 单个请求最大错误次数
-#define MAX_HD		2 // 系统支持的最大硬盘数量
+#define MAX_ERRORS	7 			// 单个请求最大错误次数
+#define MAX_HD		2 			// 系统支持的最大硬盘数量
 
 static void recal_intr(void);
 
-static int recalibrate = 1; //重新矫正标志，将磁头移动到 0 柱面
-static int reset = 1; // 复位标志
+static int recalibrate = 1; 	//重新矫正标志，将磁头移动到 0 柱面
+static int reset = 1; 			// 复位标志
 
 /*
  *  This struct defines the HD's and their types.
  */
 /**
- * 硬盘结构
+ * 硬盘参数结构（在setup.s文件中获取）
  * 定义了硬盘参数与类型
  * 六个参数分别为磁头数、每磁道扇区数、柱面数、写前预补偿柱面号、磁头着陆区柱面号与控制字节
 */
@@ -65,23 +69,23 @@ static int NR_HD = 0;
  * index 为 5 倍数时存储整个磁盘的参数
 */
 static struct hd_struct {
-	long start_sect; // 起始扇区号
-	long nr_sects; // 分区扇区总数
-} hd[5*MAX_HD]={{0,0},};
+	long start_sect; 	// 起始扇区号
+	long nr_sects; 		// 分区扇区总数
+} *hd[5*MAX_HD]={{0,0},};
 /**
  * 读端口 
- * port 读取的端口号 
- * buf 保存读取的缓冲区
- * nr 读取的字节数
+ * @param port 读取的端口号 
+ * @param buf 保存读取的缓冲区
+ * @param nr 读取的字节数
 */
 #define port_read(port,buf,nr) \
 __asm__("cld;rep;insw"::"d" (port),"D" (buf),"c" (nr):"cx","di")
 
 /**
  * 写端口
- * port 写数据的端口
- * buf 存有需要写的数据的缓冲
- * nr 写的字节数
+ * @param port 写数据的端口
+ * @param buf 存有需要写的数据的缓冲
+ * @param nr 写的字节数
 */
 #define port_write(port,buf,nr) \
 __asm__("cld;rep;outsw"::"d" (port),"S" (buf),"c" (nr):"cx","si")
@@ -93,10 +97,11 @@ extern void rd_load(void);
 /**
  * 通过读取 CMOS 和 硬盘参数表信息，来设置硬盘分区结构 hd，并加载 RAM 虚拟盘和根文件系统
  * @param BOIS setup.s 程序从 BOIS 取得的 2 个硬盘的基本参数表
+ * @return 0-成功，其他-错误号
 */
 int sys_setup(void * BIOS)
 {
-	static int callable = 1;
+	static int callable = 1;	// 标识函数是否为第一次运行 
 	int i,drive;
 	unsigned char cmos_disks;
 	struct partition *p;
@@ -107,8 +112,8 @@ int sys_setup(void * BIOS)
 		return -1;
 	callable = 0;
 
-	// 当没在 config.h 手动定义硬盘参数时，就从硬盘BOIS 中读取
-#ifndef HD_TYPE
+// 当没在 config.h 手动定义硬盘参数时，就从硬盘BOIS 中读取
+#ifndef HD_TYPE		
 	// 设置 硬盘1 与 硬盘2 的对应参数
 	for (drive=0 ; drive<2 ; drive++) {
 		hd_info[drive].cyl = *(unsigned short *) BIOS;
@@ -191,8 +196,8 @@ int sys_setup(void * BIOS)
 	// 硬盘存在且分区表已读入时，打印对应参数
 	if (NR_HD)
 		printk("Partition table%s ok.\n\r",(NR_HD>1)?"s":"");
-	rd_load(); // 加载创建RAMDISK
-	mount_root(); // 安装根文件系统
+	rd_load(); 		// 加载创建RAMDISK
+	mount_root(); 	// 安装根文件系统
 	return (0);
 }
 
@@ -214,6 +219,7 @@ static int win_result(void)
 {
 	int i=inb_p(HD_STATUS); // 获取控制器状态信息
 
+	// 控制器状态为 就绪或者寻道结束时成功
 	if ((i & (BUSY_STAT | READY_STAT | WRERR_STAT | SEEK_STAT | ERR_STAT))
 		== (READY_STAT | SEEK_STAT))
 		return(0); /* ok */
@@ -223,13 +229,13 @@ static int win_result(void)
 
 /**
  * 向硬盘控制器发送命令块
- * drive 硬盘编号
- * nsect 读写扇区数
- * sect 起始扇区
- * head 磁头号
- * cyl 柱面号
- * cmd 命令码
- * intr_addr 硬盘中断处理程序将调用的处理函数
+ * @param drive 硬盘编号
+ * @param nsect 读写扇区数
+ * @param sect 起始扇区
+ * @param head 磁头号
+ * @param cyl 柱面号
+ * @param cmd 命令码
+ * @param intr_addr 硬盘中断处理程序将调用的处理函数
 */
 static void hd_out(unsigned int drive,unsigned int nsect,unsigned int sect,
 		unsigned int head,unsigned int cyl,unsigned int cmd,
@@ -243,22 +249,23 @@ static void hd_out(unsigned int drive,unsigned int nsect,unsigned int sect,
 	// 驱动器超时未就绪时死机
 	if (!controller_ready())
 		panic("HD controller not ready");
-	do_hd = intr_addr; // do_hd 指向硬盘中断处理程序
-	outb_p(hd_info[drive].ctl,HD_CMD); // 向控制寄存器中输入控制字节
-	port=HD_DATA; // 置 dx 为寄存器端口
+	do_hd = intr_addr; 					// do_hd 指向硬盘中断处理程序
+	outb_p(hd_info[drive].ctl,HD_CMD); 	// 向控制寄存器中输入控制字节
+	port=HD_DATA; 						// 置 dx 为寄存器端口
 	outb_p(hd_info[drive].wpcom>>2,++port); // 参数：写预补偿柱面号（除以 4）
-	outb_p(nsect,++port); // 参数：读写扇区数
-	outb_p(sect,++port); // 参数：起始扇区
-	outb_p(cyl,++port); // 参数：柱面号低8位
-	outb_p(cyl>>8,++port); // 参数：柱面号高 8 位
+	outb_p(nsect,++port); 				// 参数：读写扇区数
+	outb_p(sect,++port); 				// 参数：起始扇区
+	outb_p(cyl,++port); 				// 参数：柱面号低8位
+	outb_p(cyl>>8,++port); 				// 参数：柱面号高 8 位
 	outb_p(0xA0|(drive<<4)|head,++port); // 参数：驱动器 + 磁头号
-	outb(cmd,++port); // 命令：硬盘控制命令
+	outb(cmd,++port); 					// 命令：硬盘控制命令
 }
 
 /**
  * 等待硬盘就绪，及循环等待主状态控制器忙标志位复位；
  * 若仅有就绪或寻道结束标志置位，则成功并返回 0；
  * 若经过一段时间后仍为忙 则返回 1 
+ * @return 控制器就绪 - 0，控制器忙 - 1
 */
 static int drive_busy(void)
 {
@@ -282,24 +289,24 @@ static void reset_controller(void)
 {
 	int	i;
 
-	outb(4,HD_CMD); // 向控制寄存器端口发送 4-复位 控制字节
+	outb(4,HD_CMD); 				// 向控制寄存器端口发送 4-复位 控制字节
 	for(i = 0; i < 100; i++) nop(); // 等待一段时间（复位完成）后
 	outb(hd_info[0].ctl & 0x0f ,HD_CMD); // 在发送正常的控制字节（不禁止重试、重读）
-	if (drive_busy()) // 等待硬盘就绪超时，展示错误信息
+	if (drive_busy()) 				// 等待硬盘就绪超时，展示错误信息
 		printk("HD-controller still busy\n\r");
-	if ((i = inb(HD_ERROR)) != 1) // 读取硬盘错误寄存器，若有错误则提示
+	if ((i = inb(HD_ERROR)) != 1) 	// 读取硬盘错误寄存器，若有错误则提示
 		printk("HD-controller reset failed: %02x\n\r",i);
 }
 
 /**
  * 磁盘复位函数
- * nr 当前硬盘号
+ * @param nr 当前硬盘号
 */
 static void reset_hd(int nr)
 {
-	reset_controller(); // 复位控制器
+	reset_controller(); 							// 复位控制器
 	hd_out(nr,hd_info[nr].sect,hd_info[nr].sect,hd_info[nr].head-1,
-		hd_info[nr].cyl,WIN_SPECIFY,&recal_intr); // 发送硬盘控制命令 "建立驱动器参数"
+		hd_info[nr].cyl,WIN_SPECIFY,&recal_intr); 	// 发送硬盘控制命令 "建立驱动器参数"
 }
 
 /**
@@ -336,9 +343,9 @@ static void read_intr(void)
 	}
 	// 一次读取一个扇区 (256 字节) 到缓冲区
 	port_read(HD_DATA,CURRENT->buffer,256);
-	CURRENT->errors = 0; // 重置错误次数
+	CURRENT->errors = 0; 	// 重置错误次数
 	CURRENT->buffer += 512; // 移动缓冲区指针
-	CURRENT->sector++; // 扇区 + 1
+	CURRENT->sector++; 		// 扇区 + 1
 	// 数据未读完时 
 	if (--CURRENT->nr_sectors) {
 		do_hd = &read_intr; // 再次置硬盘调用 c 函数指针为 read_intr()
@@ -394,18 +401,17 @@ void do_hd_request(void)
 	unsigned int sec,head,cyl;
 	unsigned int nsect;
 
-	INIT_REQUEST; // 检测请求项的合法性
-	dev = MINOR(CURRENT->dev); // dev 指向当前分区号
-	block = CURRENT->sector; // bolck 指向当前需操作的起始扇区
-	/**
-	 * 当分区不存在以及起始扇区大于该分区扇区数-2（因为每次读写要求两个扇区，因此读取起始扇区不能大于该分区扇区数-2）时，直接退出
-	*/
+	INIT_REQUEST; 				// 检测请求项的合法性
+	dev = MINOR(CURRENT->dev); 	// dev 指向当前分区号
+	block = CURRENT->sector; 	// bolck 指向当前需操作的起始扇区
+	
+	// 当分区不存在以及起始扇区大于该分区扇区数-2（因为每次读写要求两个扇区，因此读取起始扇区不能大于该分区扇区数-2）时，直接退出
 	if (dev >= 5*NR_HD || block+2 > hd[dev].nr_sects) {
 		end_request(0);
 		goto repeat;
 	}
 	block += hd[dev].start_sect; // 指向实际硬盘起始扇区
-	dev /= 5; // dev 指向实际硬盘号 0 或者 1
+	dev /= 5; 					// dev 指向实际硬盘号 0 或者 1
 	// 下面两行嵌入式汇编代码，根据硬盘起始扇区号和每磁道扇区数计算在磁道中的扇区号（sec）、所在柱面号（cyl）和磁头号（head）
 	__asm__("divl %4":"=a" (block),"=d" (sec):"0" (block),"1" (0),
 		"r" (hd_info[dev].sect));
@@ -416,16 +422,15 @@ void do_hd_request(void)
 	// 如果复位标志为 1 这执行复位操作
 	if (reset) {
 		reset = 0;
-		recalibrate = 1; // 复位后需要进行重新矫正
+		recalibrate = 1; 		// 复位后需要进行重新矫正
 		reset_hd(CURRENT_DEV);
 		return;
 	}
 	// 当重新矫正标志置位时，首先需要重新矫正标志
 	if (recalibrate) {
 		recalibrate = 0;
-		// 发送重新矫正命令
 		hd_out(dev,hd_info[CURRENT_DEV].sect,0,0,0,
-			WIN_RESTORE,&recal_intr);
+			WIN_RESTORE,&recal_intr);	// 发送重新矫正命令
 		return;
 	}	
 	// 处理写请求

@@ -14,11 +14,11 @@
 #include <asm/segment.h>
 #include <asm/memory.h>
 
-#define MAJOR_NR 1 // 内存主设备号为 1
+#define MAJOR_NR 1 	// 虚拟盘主设备号为 1
 #include "blk.h"
 
-char	*rd_start;
-int	rd_length = 0;
+char	*rd_start;	// 虚拟盘在内存中的起始位置
+int	rd_length = 0;	// 虚拟盘所在内存大小（字节）
 
 /**
  * 执行虚拟盘读写操作函数；
@@ -28,14 +28,11 @@ void do_rd_request(void)
 {
 	int	len;
 	char	*addr;
-	// 检测请求合法性（设备号与主设备是否一致、指定缓冲区是否被锁定）
-	INIT_REQUEST;
-	// 获取 ramdisk 起始扇区对应的内存起始位置和内存长度（一个扇区为 512 B）
-	// addr 要操作的起始内存位置
-	// len 位要操作的数据长度
-	addr = rd_start + (CURRENT->sector << 9);
-	len = CURRENT->nr_sectors << 9;
-	// 如果当前设备号不为 1 或者对应内存起始位置 > 虚拟盘结尾，则结束该请求，并跳转到 repeat 处
+
+	INIT_REQUEST;								// 检测请求合法性（设备号与主设备是否一致、指定缓冲区是否被锁定）
+	addr = rd_start + (CURRENT->sector << 9); 	// 根据当前操作的起始分区计算所操作内存的起始地址（一个扇区为 512 B）
+	len = CURRENT->nr_sectors << 9;				// 通过操作的扇区数计算出需要操作的扇区数
+	// 子设备号不为 1 或者对应内存起始位置 > 虚拟盘结尾，则结束该请求，并跳转到 repeat 处
 	if ((MINOR(CURRENT->dev) != 1) || (addr+len > rd_start+rd_length)) {
 		end_request(0);
 		goto repeat;
@@ -50,41 +47,33 @@ void do_rd_request(void)
 		(void) memcpy(CURRENT->buffer, 
 			      addr,
 			      len);
+	// 命令只能为读写命令
 	} else
-		// 否则死机
 		panic("unknown ramdisk-command");
 	//执行完毕时，置更新标志，继续处理下一请求项
 	end_request(1);
 	goto repeat;
 }
 
-/*
- * Returns amount of memory which needs to be reserved.
- */
-// 将虚拟内存中所有参数设置为占位符
+/**
+ * 虚拟盘初始化函数
+ * @param mem_start 虚拟盘内存起始地址
+ * @param length 虚拟盘内存长度
+*/
 long rd_init(long mem_start, int length)
 {
 	int	i;
 	char	*cp;
 
-	// 设置虚拟盘请求操作函数
-	blk_dev[MAJOR_NR].request_fn = DEVICE_REQUEST;
-	// 虚拟盘起始地址与主内存起始地址一致
-	rd_start = (char *) mem_start;
-	rd_length = length;
-	// 初始化内存虚拟盘区域的内存（对齐清零）
-	cp = rd_start;
+	blk_dev[MAJOR_NR].request_fn = DEVICE_REQUEST;	// 设置虚拟盘请求操作函数
+	rd_start = (char *) mem_start;					// 设置虚拟盘内存起始地址（与主内存地址一致）
+	rd_length = length;								// 初始化虚拟盘长度
+	cp = rd_start;									// 初始化内存虚拟盘区域的内存（对齐清零）
 	for (i=0; i < length; i++)
 		*cp++ = '\0';
-	// 返回虚拟盘区域大小
-	return(length);
+	return(length);									// 返回虚拟盘区域大小
 }
 
-/*
- * If the root device is the ram disk, try to load it.
- * In order to do this, the root device is originally set to the
- * floppy, and we later change it to be ram disk.
- */
 /**
  * 加载根文件系统到 Ramdisk
 */
@@ -97,25 +86,22 @@ void rd_load(void)
 	int		nblocks;
 	char		*cp;		/* Move pointer */
 	
-	if (!rd_length) // 未使用虚拟盘时直接退出
+	if (!rd_length) 									// 未使用虚拟盘时直接退出
 		return;
 	printk("Ram disk: %d bytes, starting at 0x%x\n", rd_length,
 		(int) rd_start);
-	if (MAJOR(ROOT_DEV) != 2) // 根文件所在设备不在软盘时退出
+	if (MAJOR(ROOT_DEV) != 2)							// 根文件所在设备不在软盘时退出
 		return;
-	bh = breada(ROOT_DEV,block+1,block,block+2,-1); // 读取 256+1，256，256+2 上的块
+	bh = breada(ROOT_DEV,block+1,block,block+2,-1); 	// 读取 256+1，256，256+2 上的块
 	if (!bh) {
 		printk("Disk error while looking for ramdisk!\n");
 		return;
 	}
-	// 将 256 + 1 块上的数据复制到 s 中去
-	*((struct d_super_block *) &s) = *((struct d_super_block *) bh->b_data);
-	brelse(bh); // 释放 256 + 1 块
-	// 当文件系统不是 minix 时，直接返回
-	if (s.s_magic != SUPER_MAGIC)
-		/* No ram disk image present, assume normal floppy boot */
+	*((struct d_super_block *) &s) = *((struct d_super_block *) bh->b_data);	// 将 256 + 1 块上的数据（软盘设备的块设备）设置到超级块中
+	brelse(bh); 										// 释放该缓冲区
+	if (s.s_magic != SUPER_MAGIC)						// 当文件系统不是 minix 时，直接返回
 		return;
-	nblocks = s.s_nzones << s.s_log_zone_size; // 块数 = 逻辑块数（区段数）* 2 ^ (每区段块数的幂)
+	nblocks = s.s_nzones << s.s_log_zone_size; 			// 块数 = 逻辑块数（区段数）* 2 ^ (每区段块数的幂)
 	// 系统块的个数大于内存中虚拟盘所能容纳的块数，无法加载，打印错误消息然后退出
 	if (nblocks > (rd_length >> BLOCK_SIZE_BITS)) {
 		printk("Ram disk image too big!  (%d blocks, %d avail)\n", 
@@ -137,13 +123,13 @@ void rd_load(void)
 				block);
 			return;
 		}
-		(void) memcpy(cp, bh->b_data, BLOCK_SIZE); // 将缓冲区对应块数据移动到 虚拟盘对应内存
-		brelse(bh); // 释放 bh 处的内存
-		printk("\010\010\010\010\010%4dk",i); // 打印当前加载的块数量
-		cp += BLOCK_SIZE; // 移动虚拟盘基地址
-		block++; // 移动块地址
-		nblocks--; // 移动软盘块地址
-		i++; // 对已移动块数量进行计数
+		(void) memcpy(cp, bh->b_data, BLOCK_SIZE); 	// 将缓冲区对应块数据移动到 虚拟盘对应内存
+		brelse(bh); 								// 释放 bh 处的内存
+		printk("\010\010\010\010\010%4dk",i); 		// 打印当前加载的块数量
+		cp += BLOCK_SIZE; 							// 移动虚拟盘基地址
+		block++; 									// 移动块地址
+		nblocks--; 									// 移动软盘块地址
+		i++; 										// 对已移动块数量进行计数
 	}
 	printk("\010\010\010\010\010done \n");
 	ROOT_DEV=0x0101; // 修改 ROOT_DEV 主设备指向虚拟内存

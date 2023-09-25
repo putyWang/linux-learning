@@ -14,22 +14,9 @@
 
 #include "blk.h"
 
-/*
- * The request-struct contains all necessary data
- * to load a nr of sectors into memory
- */
-/**
- * 请求数组
-*/
-struct request request[NR_REQUEST];
+struct request request[NR_REQUEST]; 			// 请求数组（含有加载 nr 扇区数据到内存中的所有必须的信息）
 
-/*
- * used to wait on when there are no free requests
- */
-/**
- * 请求数组已满时，临时等待区
-*/
-struct task_struct * wait_for_request = NULL;
+struct task_struct * wait_for_request = NULL; 	// 请求数组已满时，最新的等待进程指针
 
 /* blk_dev_struct is:
  *	do_request-address
@@ -39,13 +26,13 @@ struct task_struct * wait_for_request = NULL;
  * 数组使用主设备号作为索引
 */
 struct blk_dev_struct blk_dev[NR_BLK_DEV] = {
-	{ NULL, NULL },		/* no_dev */ // 0 - 无设备
-	{ NULL, NULL },		/* dev mem */ // 1 - 内存
-	{ NULL, NULL },		/* dev fd */ // 2 - 软驱设备
-	{ NULL, NULL },		/* dev hd */ // 3 - 硬盘设备
-	{ NULL, NULL },		/* dev ttyx */ // 4- ttyx 设备
-	{ NULL, NULL },		/* dev tty */ // 5- tty 设备
-	{ NULL, NULL }		/* dev lp */ // 6- lp 打印机设备
+	{ NULL, NULL },		// 0 - 无设备
+	{ NULL, NULL },		// 1 - 内存
+	{ NULL, NULL },		// 2 - 软驱设备
+	{ NULL, NULL },		// 3 - 硬盘设备
+	{ NULL, NULL },		// 4- ttyx 设备
+	{ NULL, NULL },		// 5- tty 设备
+	{ NULL, NULL }		// 6- lp 打印机设备
 };
 
 /**
@@ -74,32 +61,27 @@ static inline void unlock_buffer(struct buffer_head * bh)
 	wake_up(&bh->b_wait); // 唤醒等待该缓冲区解锁的任务
 }
 
-/*
- * add-request adds a request to the linked list.
- * It disables interrupts so that it can muck with the
- * request-lists in peace.
- */
 /**
  * 向链表中添加请求项
- * @param dev 设备指针
- * @param req 请求对象
+ * @param dev 指定块设备指针
+ * @param req 请求结构信息
 */
 static void add_request(struct blk_dev_struct * dev, struct request * req)
 {
 	struct request * tmp;
 
 	req->next = NULL;
-	cli(); // 禁止中断
+	cli(); 										// 禁止中断
 	if (req->bh)
-		req->bh->b_dirt = 0; // 复位缓冲区 脏标志
+		req->bh->b_dirt = 0; 					// 复位缓冲区 脏标志
 	// 当前没请求时，直接将 req 置为当前请求
 	if (!(tmp = dev->current_request)) {
 		dev->current_request = req;
-		sti(); // 开启中断
-		(dev->request_fn)(); // 直接执行请求
+		sti(); 									// 开启中断
+		(dev->request_fn)(); 					// 直接执行请求
 		return;
 	}
-	// 已有请求项时，使用电梯算法获取最优位置，然后插入请求
+	// 已有请求项时，遍历所有请求使用电梯算法获取最优位置，然后插入请求
 	for ( ; tmp->next ; tmp=tmp->next)
 		if ((IN_ORDER(tmp,req) ||
 		    !IN_ORDER(tmp,tmp->next)) &&
@@ -111,62 +93,51 @@ static void add_request(struct blk_dev_struct * dev, struct request * req)
 }
 
 /**
- * 新增块设备读写请求
+ * 创建块设备读写请求并插入请求队列
  * @param major 设备号
- * @param rw 读写控制字
- * @param bh 需要操作的缓冲头
+ * @param rw 读写命令
+ * @param bh 需要操作的缓冲指针
 */
 static void make_request(int major,int rw, struct buffer_head * bh)
 {
 	struct request * req;
 	int rw_ahead;
 
-/* WRITEA/READA is special case - it is not really needed, so if the */
-/* buffer is locked, we just forget about it, else it's a normal read */
+	// READ 与 WRITE 后面的 'A' 字符代表英文单词 Ahead，标识提前读与提前写的意思，
+	// 当指定的缓冲区正在使用已被上锁时，就直接放弃预读/写请求
 	if (rw_ahead = (rw == READA || rw == WRITEA)) {
-		if (bh->b_lock) // 当前缓冲上锁时，返回
+		if (bh->b_lock) 		// 当前缓冲上锁时，返回
 			return;
 		if (rw == READA)
-			rw = READ; // 设置读命令
+			rw = READ; 			// 设置读命令
 		else
-			rw = WRITE; // 设置写命令
+			rw = WRITE; 		// 设置写命令
 	}
-	// 命令非读写时报错，死机
-	if (rw!=READ && rw!=WRITE)
+	if (rw!=READ && rw!=WRITE)	// 命令非读写时报错，死机
 		panic("Bad block dev command, must be R/W/RA/WA");
-	lock_buffer(bh); // 对指定缓冲上锁
+	lock_buffer(bh); 			// 对指定缓冲上锁
 	// 当写命令且缓冲不需要更新到设备或读命令且缓冲区未被更新，则直接解锁该缓冲块并退出
 	if ((rw == WRITE && !bh->b_dirt) || (rw == READ && bh->b_uptodate)) {
 		unlock_buffer(bh);
 		return;
 	}
 repeat:
-/* we don't allow the write-requests to fill up the queue completely:
- * we want some room for reads: they take precedence. The last third
- * of the requests are only for reads.
- */
-	// 读请求从末尾开始搜索空位的请求
-	if (rw == READ)
+	if (rw == READ)				// 读请求从末尾开始搜索空位的请求
 		req = request+NR_REQUEST;
-	else
-	// 写请求则是从 2/3 处开始搜索
+	else						// 写请求则是从 2/3 处开始搜索					
 		req = request+((NR_REQUEST*2)/3);
-/* find an empty request */
-	// 查找当前请求数组中空闲项
-	while (--req >= request)
+	while (--req >= request)	// 查找请求数组中空闲项
 		if (req->dev<0)
 			break;
-/* if none found, sleep on new requests: check for rw_ahead */
-	// 没空闲项时，让该请求项睡眠等待空闲
+	// 没空闲项时，则阻塞当前进程直到存在空闲项时被唤醒
 	if (req < request) {
-		if (rw_ahead) { // 预读写命令直接返回
+		if (rw_ahead) { 		// 预读写命令直接返回
 			unlock_buffer(bh);
 			return;
 		}
 		sleep_on(&wait_for_request);
 		goto repeat;
 	}
-/* fill up the request-info, and add it to the queue */
 	// 创建请求信息，并添加到请求队列中去
 	req->dev = bh->b_dev;
 	req->cmd = rw;
@@ -189,7 +160,7 @@ void ll_rw_block(int rw, struct buffer_head * bh)
 {
 	unsigned int major;
 
-	// 设备号不合法时，输出错误
+	// 设备号不合法或指定设备请求处理函数指针为空时，输出错误
 	if ((major=MAJOR(bh->b_dev)) >= NR_BLK_DEV ||
 	!(blk_dev[major].request_fn)) {
 		printk("Trying to read nonexistent block-device\n\r");
@@ -208,8 +179,7 @@ void blk_dev_init(void)
 
 	// 初始化块设备请求数组队列，将所有全设置为 未请求，下一请求置空
 	for (i=0 ; i<NR_REQUEST ; i++) {
-		// 设置为空闲
-		request[i].dev = -1;
-		request[i].next = NULL;
+		request[i].dev = -1; 	// 初始化空闲请求项 dev 初始值位 -1 
+		request[i].next = NULL; // 初始化请求下一项为 NULL
 	}
 }
