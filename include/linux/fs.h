@@ -101,26 +101,26 @@ struct d_inode {
  * 内存中的 i 街边结构，前七项与 d_inode 完全一致
 */
 struct m_inode {
-	unsigned short i_mode; /*文件类型与属性（rwx）*/
-	unsigned short i_uid; /*用户 id*/
-	unsigned long i_size; /*物理内存页地址*/
-	unsigned long i_mtime; /*修改时间*/
-	unsigned char i_gid; /*组 id（文件拥有者所在的组）*/
-	unsigned char i_nlinks; /*连接数（指向该i节点的目录数）*/
-	unsigned short i_zone[9]; /*直接（0～6）、间接（7）或双重间接（8）逻辑块号，zone 是区的意思，可译成区段，或逻辑号*/
+	unsigned short i_mode; 			/*文件类型与属性（rwx）*/
+	unsigned short i_uid; 			/*用户 id*/
+	unsigned long i_size; 			// 物理内存页地址或管道 i 节点所使用的内存
+	unsigned long i_mtime; 			/*修改时间*/
+	unsigned char i_gid; 			/*组 id（文件拥有者所在的组）*/
+	unsigned char i_nlinks; 		/*连接数（指向该i节点的目录数）*/
+	unsigned short i_zone[9]; 		/*直接（0～6）、间接（7）或双重间接（8）逻辑块号，zone 是区的意思，可译成区段，或逻辑号*/
 /* these are in memory also */
-	struct task_struct * i_wait; /*等待该 i 节点的进程*/
-	unsigned long i_atime; /*最后访问时间*/
-	unsigned long i_ctime; /*i 节点自身修改时间*/
-	unsigned short i_dev; /*i 节点所在设备号*/
-	unsigned short i_num; /*i 节点号（即是i节点位图中对应位）*/
-	unsigned short i_count; /*i 节点被使用的次数 0 表示该节点空闲*/
-	unsigned char i_lock; /*锁定标志*/
-	unsigned char i_dirt; /*已修改（脏）标志*/
-	unsigned char i_pipe; /*管道标志*/
-	unsigned char i_mount; /*安装标志*/
-	unsigned char i_seek; /*搜寻标志，lseek 时*/
-	unsigned char i_update; /*更新标志*/
+	struct task_struct * i_wait;	/*等待该 i 节点的进程*/
+	unsigned long i_atime; 			/*最后访问时间*/
+	unsigned long i_ctime; 			/*i 节点自身修改时间*/
+	unsigned short i_dev; 			/*i 节点所在设备号*/
+	unsigned short i_num; 			/*i 节点号（即是i节点位图中对应位）*/
+	unsigned short i_count; 		/*i 节点被使用的次数 0 表示该节点空闲*/
+	unsigned char i_lock; 			/*锁定标志*/
+	unsigned char i_dirt; 			/*已修改（脏）标志*/
+	unsigned char i_pipe; 			/*管道标志*/
+	unsigned char i_mount; 			// 是否为其他设备的超级块 i 节点
+	unsigned char i_seek; 			/*搜寻标志，lseek 时*/
+	unsigned char i_update; 		/*更新标志*/
 };
 
 /**
@@ -139,45 +139,45 @@ struct file {
  * 存储文件系统信息
 */
 struct super_block {
-	unsigned short s_ninodes; // i节点数
-	unsigned short s_nzones; // 逻辑块数
-	unsigned short s_imap_blocks; // i节点位图所占块数
-	unsigned short s_zmap_blocks; // 逻辑块位图所占块数
+	unsigned short s_ninodes; 		// i节点数
+	unsigned short s_nzones; 		// 逻辑块数
+	unsigned short s_imap_blocks; 	// i节点位图所占块数
+	unsigned short s_zmap_blocks; 	// 逻辑块位图所占块数
 	unsigned short s_firstdatazone; // 第一个逻辑块号
 	unsigned short s_log_zone_size; // log2(数据块数/逻辑块)
-	unsigned long s_max_size; // 最大文件长度
-	unsigned short s_magic; // 文件系统魔数
+	unsigned long s_max_size; 		// 最大文件长度
+	unsigned short s_magic; 		// 文件系统魔数
 	// 以下字段仅在内存中存在
-	struct buffer_head * s_imap[8]; // i节点位图在高速缓冲块中指针数组
+	struct buffer_head * s_imap[8];	// i节点位图在高速缓冲块中指针数组
 	struct buffer_head * s_zmap[8]; // 逻辑块位图在高速缓冲块指针数组
-	unsigned short s_dev; // 超级快所在设备号
-	struct m_inode * s_isup; // 被安装文件系统的根目录 i 节点
-	struct m_inode * s_imount; // 该文件系统被安装到的 i 节点
-	unsigned long s_time; // 修改时间
-	struct task_struct * s_wait; // 等待本超级块的进程指针
-	unsigned char s_lock; // 锁定标志
-	unsigned char s_rd_only; // 只读标志
-	unsigned char s_dirt; // 已被修改标志
+	unsigned short s_dev; 			// 超级快所在设备号
+	struct m_inode * s_isup; 		// 被安装文件系统的根目录 i 节点
+	struct m_inode * s_imount; 		// 该文件系统被安装到的 i 节点
+	unsigned long s_time; 			// 修改时间
+	struct task_struct * s_wait; 	// 等待本超级块的进程指针
+	unsigned char s_lock; 			// 锁定标志
+	unsigned char s_rd_only; 		// 只读标志
+	unsigned char s_dirt; 			// 已被修改标志
 };
 
 /**
  * 硬盘上超级块结构
 */
 struct d_super_block {
-	unsigned short s_ninodes; // i节点数
-	unsigned short s_nzones; // 逻辑块数
-	unsigned short s_imap_blocks; // i节点位图所占块数
-	unsigned short s_zmap_blocks; // 逻辑块位图所占块数
+	unsigned short s_ninodes; 		// i节点数
+	unsigned short s_nzones; 		// 逻辑块数
+	unsigned short s_imap_blocks; 	// i节点位图所占块数
+	unsigned short s_zmap_blocks; 	// 逻辑块位图所占块数
 	unsigned short s_firstdatazone; // 第一个逻辑块号
 	unsigned short s_log_zone_size; // log2(数据块数/逻辑块)
-	unsigned long s_max_size; // 最大文件长度
-	unsigned short s_magic; // 文件系统魔数
+	unsigned long s_max_size; 		// 最大文件长度
+	unsigned short s_magic; 		// 文件系统魔数
 };
 
 // 文件目录项数据结构类型
 struct dir_entry {
-	unsigned short inode; // 对应 i 节点号
-	char name[NAME_LEN]; //文件夹名
+	unsigned short inode; 			// 对应 i 节点号
+	char name[NAME_LEN]; 			//文件夹名
 };
 
 extern struct m_inode inode_table[NR_INODE]; // 定义 i 节点表数组

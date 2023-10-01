@@ -13,8 +13,8 @@
 #define O_CREAT		00100	/* not fcntl */ // 如果文件不存在时就进行创建
 #define O_EXCL		00200	/* not fcntl */ // 独占使用文件标志
 #define O_NOCTTY	00400	/* not fcntl */ // 不分配控制终端
-#define O_TRUNC		01000	/* not fcntl */ // 若文件已存在且为写操作，则长度截为 0
-#define O_APPEND	02000 // 以添加的方式打开，文件指针置位文件尾
+#define O_TRUNC		01000	// 若文件已存在且为写操作，则长度截为 0
+#define O_APPEND	02000 	// 以添加的方式打开，文件指针置位文件尾
 #define O_NONBLOCK	04000	/* not fcntl */ // 非阻塞的方式打开或者操作文件
 #define O_NDELAY	O_NONBLOCK // 非阻塞的方式打开或者操作文件 
 

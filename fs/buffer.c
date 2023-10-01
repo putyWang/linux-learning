@@ -26,12 +26,12 @@
 #include <asm/system.h>
 #include <asm/io.h>
 
-extern int end; // 由链接程序 ld 生成的指向程序末端的变量-
-struct buffer_head * start_buffer = (struct buffer_head *) &end;
-struct buffer_head * hash_table[NR_HASH]; // 存储已使用的块的hash表
-static struct buffer_head * free_list; // 空闲表
-static struct task_struct * buffer_wait = NULL;
-int NR_BUFFERS = 0;
+extern int end; 													// 由链接程序 ld 生成的指向程序末端的变量-
+struct buffer_head * start_buffer = (struct buffer_head *) &end;	
+struct buffer_head * hash_table[NR_HASH]; 							// 存储已使用的块的hash表
+static struct buffer_head * free_list; 								// 空闲链表头指针
+static struct task_struct * buffer_wait = NULL;						// 等待缓冲区使用完的解锁的指针
+int NR_BUFFERS = 0;													// 高速缓冲区中，缓冲块个数
 
 /**
  * 等待指定缓冲区解锁
@@ -39,10 +39,10 @@ int NR_BUFFERS = 0;
 */
 static inline void wait_on_buffer(struct buffer_head * bh)
 {
-	cli(); // 关闭中断
-	while (bh->b_lock) // 如果已被上锁，进程进行睡眠，等待其解锁
+	cli(); 						// 关闭中断
+	while (bh->b_lock) 			// 如果已被上锁，进程进行睡眠，等待其解锁
 		sleep_on(&bh->b_wait);
-	sti(); // 开启中断
+	sti(); 						// 开启中断
 }
 
 /**
@@ -55,6 +55,7 @@ int sys_sync(void)
 
 	sync_inodes();		/* write out inodes into buffers */
 	bh = start_buffer;
+	// 将所有脏块写回块设备
 	for (i=0 ; i<NR_BUFFERS ; i++,bh++) {
 		wait_on_buffer(bh);
 		if (bh->b_dirt)
@@ -64,7 +65,7 @@ int sys_sync(void)
 }
 
 /**
- * 同步缓冲数据到指定设备
+ * 将属于指定设备的缓冲区同步回块设备
  * @param dev 设备号
  * @return 未出错返回0
 */
@@ -78,14 +79,13 @@ int sync_dev(int dev)
 	for (i=0 ; i<NR_BUFFERS ; i++,bh++) {
 		if (bh->b_dev != dev)
 			continue;
-		// 等待匹配缓冲区解锁
-		wait_on_buffer(bh);
-		// 只写需要更新的数据
+		wait_on_buffer(bh);		// 等待匹配缓冲区解锁
+		// 将脏块写回块设备
 		if (bh->b_dev == dev && bh->b_dirt)
 			ll_rw_block(WRITE,bh);
 	}
-	sync_inodes();
-	bh = start_buffer;
+	sync_inodes();				// 将 i 节点数据同步回块设备
+	bh = start_buffer;			// 重新遍历写回脏块
 	for (i=0 ; i<NR_BUFFERS ; i++,bh++) {
 		if (bh->b_dev != dev)
 			continue;
@@ -97,7 +97,7 @@ int sync_dev(int dev)
 }
 
 /**
- * 让指定设备占用的缓冲区失效
+ * 让指定设备在高速缓冲区中失效
  * @param dev 设备号
 */
 void inline invalidate_buffers(int dev)
@@ -138,24 +138,29 @@ void check_disk_change(int dev)
 {
 	int i;
 
-	if (MAJOR(dev) != 2) // 不是软盘设备不需要检测
+	if (MAJOR(dev) != 2) 					// 不是软盘设备不需要检测
 		return;
-	if (!floppy_change(dev & 0x03)) // 软盘未更换直接返回
+	if (!floppy_change(dev & 0x03)) 		// 软盘未更换直接返回
 		return;
 	// 软盘更换后，遍历超级块数组，释放设本设备的超级块所占用的相关内存
 	for (i=0 ; i<NR_SUPER ; i++)
 		if (super_block[i].s_dev == dev)
 			put_super(super_block[i].s_dev);
-	invalidate_inodes(dev); // 使i节点占用的缓冲区失效
-	invalidate_buffers(dev); // 使数据占用的缓冲区失效
+	invalidate_inodes(dev); 				// 使i节点占用的缓冲区失效
+	invalidate_buffers(dev); 				// 使数据占用的缓冲区失效
 }
 
-#define _hashfn(dev,block) (((unsigned)(dev^block))%NR_HASH) // 对指定 dev 与 block 进行hash
-#define hash(dev,block) hash_table[_hashfn(dev,block)] // 查找指定 dev 与 block 在hash表中所在的项
+#define _hashfn(dev,block) (((unsigned)(dev^block))%NR_HASH) 	// 对指定 dev 与 block 进行hash
+#define hash(dev,block) hash_table[_hashfn(dev,block)] 			// 查找指定 dev 与 block 在hash表中所在的项
 
+/**
+ * 从 hash 队列和空闲缓冲队列中移走指定缓冲块
+ * @param bh 将要移除的缓冲块指针
+*/
 static inline void remove_from_queues(struct buffer_head * bh)
 {
 /* remove from hash-queue */
+	// 将该缓冲块从哈西表中移除
 	if (bh->b_next)
 		bh->b_next->b_prev = bh->b_prev;
 	if (bh->b_prev)
@@ -163,6 +168,7 @@ static inline void remove_from_queues(struct buffer_head * bh)
 	if (hash(bh->b_dev,bh->b_blocknr) == bh)
 		hash(bh->b_dev,bh->b_blocknr) = bh->b_next;
 /* remove from free list */
+	// 将该缓冲块从空闲列表中移除
 	if (!(bh->b_prev_free) || !(bh->b_next_free))
 		panic("Free block list corrupted");
 	bh->b_prev_free->b_next_free = bh->b_next_free;
@@ -171,14 +177,20 @@ static inline void remove_from_queues(struct buffer_head * bh)
 		free_list = bh->b_next_free;
 }
 
+/**
+ * 将指定缓冲区放到空闲缓冲区尾并放入hash_table中
+ * @param bh 将要插入的缓冲块指针
+*/
 static inline void insert_into_queues(struct buffer_head * bh)
 {
 /* put at end of free list */
+	// 将该缓冲块插入到空闲列表中末尾
 	bh->b_next_free = free_list;
 	bh->b_prev_free = free_list->b_prev_free;
 	free_list->b_prev_free->b_next_free = bh;
 	free_list->b_prev_free = bh;
 /* put the buffer in new hash-queue if it has a device */
+	// 将该缓冲块加入到哈西表
 	bh->b_prev = NULL;
 	bh->b_next = NULL;
 	if (!bh->b_dev)
@@ -225,10 +237,10 @@ struct buffer_head * get_hash_table(int dev, int block)
 
 	for (;;) {
 		if (!(bh=find_buffer(dev,block)))
-			return NULL; // 不存在返回 NULL
-		bh->b_count++; // 指向该缓冲区数 +1
-		wait_on_buffer(bh); // 等待该块解锁
-		// 判断该缓冲区是否还是为指定设备与快的
+			return NULL; 					// 不存在返回 NULL
+		bh->b_count++; 						// 指向该缓冲区数 +1
+		wait_on_buffer(bh); 				// 等待该块解锁
+											// 判断该缓冲区是否还是为指定设备与快的
 		if (bh->b_dev == dev && bh->b_blocknr == block)
 			return bh;
 		bh->b_count--;
@@ -242,7 +254,7 @@ struct buffer_head * get_hash_table(int dev, int block)
  *
  * The algoritm is changed: hopefully better, and an elusive bug removed.
  */
-#define BADNESS(bh) (((bh)->b_dirt<<1)+(bh)->b_lock)
+#define BADNESS(bh) (((bh)->b_dirt<<1)+(bh)->b_lock)	// 同时判断缓冲区的脏与锁定标志
 /**
  * 取高速缓冲区中指定的缓冲区
  * 检查指定的缓冲区是否在高速缓冲区中。如果不在，就需要在高速缓冲区中建立一个对应的新项
@@ -255,13 +267,11 @@ struct buffer_head * getblk(int dev,int block)
 	struct buffer_head * tmp, * bh;
 
 repeat:
-	// 存在该高速缓冲时，直接返回该缓冲头
-	if (bh = get_hash_table(dev,block))
+	if (bh = get_hash_table(dev,block))			// 存在该高速缓冲时，直接返回该缓冲头
 		return bh;
-	// 为指定程序获取空缓冲区块
-	tmp = free_list;
+	tmp = free_list;							// 为指定程序获取空缓冲区块
 	do {
-		if (tmp->b_count) // 临时缓冲头正在被使用时跳过
+		if (tmp->b_count) 						// 临时缓冲头正在被使用时跳过
 			continue;
 		// bh为空或者tmp所指缓冲头的标志（修改、锁定）权重小于bh头标志位，则让 bh 指向 tmp 缓冲区头；
 		// 该 tmp 缓冲区表明既没有被修改过，也没有被锁定，则说明已为指定设备上的块以获取到对应的高速缓冲区，退出循环
@@ -277,12 +287,10 @@ repeat:
 		sleep_on(&buffer_wait);
 		goto repeat;
 	}
-	wait_on_buffer(bh); // 等待该缓冲区解锁
-	// 该缓冲区还有程序使用，重新寻找可用
-	if (bh->b_count)
+	wait_on_buffer(bh); 							// 等待该缓冲区解锁
+	if (bh->b_count)								// 该缓冲区还有程序使用，重新寻找可用
 		goto repeat;
-	// 该缓冲区被修改，需要将数据写回盘，并在此等待解锁
-	while (bh->b_dirt) {
+	while (bh->b_dirt) {							// 该缓冲区被修改，需要将数据写回盘，并在此等待解锁
 		sync_dev(bh->b_dev);
 		wait_on_buffer(bh);
 		if (bh->b_count)
@@ -294,10 +302,12 @@ repeat:
 		goto repeat;
 /* OK, FINALLY we know that this buffer is the only one of it's kind, */
 /* and that it's unused (b_count=0), unlocked (b_lock=0), and clean */
+	// 先将寻找的缓冲区移除出旧hash表中
 	bh->b_count=1;
 	bh->b_dirt=0;
 	bh->b_uptodate=0;
 	remove_from_queues(bh);
+	// 然后将寻找的缓冲区插入到新 hashtable 项中
 	bh->b_dev=dev;
 	bh->b_blocknr=block;
 	insert_into_queues(bh);
@@ -312,10 +322,10 @@ void brelse(struct buffer_head * buf)
 {
 	if (!buf)
 		return;
-	wait_on_buffer(buf); // 等待缓存块解锁
-	if (!(buf->b_count--)) // 缓冲块引用计数减一
+	wait_on_buffer(buf); 						// 等待缓存块解锁
+	if (!(buf->b_count--)) 						// 缓冲块引用计数减一
 		panic("Trying to free free buffer");
-	wake_up(&buffer_wait); // 唤醒等待缓冲区空闲的缓存
+	wake_up(&buffer_wait); 						// 唤醒等待缓冲区空闲的缓存
 }
 
 /*
@@ -331,18 +341,23 @@ struct buffer_head * bread(int dev,int block)
 {
 	struct buffer_head * bh;
 
-	if (!(bh=getblk(dev,block))) // 获取缓冲区中指定块
+	if (!(bh=getblk(dev,block))) 				// 获取缓冲区中指定块
 		panic("bread: getblk returned NULL\n");
-	if (bh->b_uptodate) // 数据已经更新过，直接返回
+	if (bh->b_uptodate) 						// 数据已经更新过，直接返回
 		return bh;
-	ll_rw_block(READ,bh); // 未更新过时，添加读取请求
-	wait_on_buffer(bh); // 等待缓冲区解锁
-	if (bh->b_uptodate) // 更新成功后返回
+	ll_rw_block(READ,bh); 						// 未更新过时，添加读取请求
+	wait_on_buffer(bh); 						// 等待缓冲区解锁
+	if (bh->b_uptodate) 						// 更新成功后返回
 		return bh;
-	brelse(bh); // 否则表明操作失败，然后释放缓存
+	brelse(bh); 								// 否则表明操作失败，然后释放缓存
 	return NULL;
 }
 
+/**
+ * 复制内存块
+ * @param from 原地址
+ * @param to 目标地址
+*/
 #define COPYBLK(from,to) \
 __asm__("cld\n\t" \
 	"rep\n\t" \
@@ -350,17 +365,18 @@ __asm__("cld\n\t" \
 	::"c" (BLOCK_SIZE/4),"S" (from),"D" (to) \
 	:"cx","di","si")
 
-/*
- * bread_page reads four buffers into memory at the desired address. It's
- * a function of its own, as there is some speed to be got by reading them
- * all at the same time, not waiting for one to be read, and then another
- * etc.
- */
+/**
+ * 一次将最多四个缓冲块内容读取到内存指定位置
+ * @param address 保存数据内存地址
+ * @param dev 设备号
+ * @param b[4] 块号数组
+*/
 void bread_page(unsigned long address,int dev,int b[4])
 {
 	struct buffer_head * bh[4];
 	int i;
 
+	// 将 b[4] 中指定的四个块对应的数据保存到 bh[4] 对应的缓冲区中
 	for (i=0 ; i<4 ; i++)
 		if (b[i]) {
 			if (bh[i] = getblk(dev,b[i]))
@@ -368,12 +384,13 @@ void bread_page(unsigned long address,int dev,int b[4])
 					ll_rw_block(READ,bh[i]);
 		} else
 			bh[i] = NULL;
+	// 将 bh[i] 中的数据，按照顺序复制到指定内存地址处
 	for (i=0 ; i<4 ; i++,address += BLOCK_SIZE)
 		if (bh[i]) {
 			wait_on_buffer(bh[i]);
 			if (bh[i]->b_uptodate)
 				COPYBLK((unsigned long) bh[i]->b_data,address);
-			brelse(bh[i]);
+			brelse(bh[i]);				// 释放缓冲区对应内存
 		}
 }
 
@@ -417,7 +434,8 @@ struct buffer_head * breada(int dev,int first, ...)
 }
 
 /**
- * 初始化缓冲区为空
+ * 初始化缓冲区函数
+ * @param buffer_end 缓冲区尾地址
 */
 void buffer_init(long buffer_end)
 {

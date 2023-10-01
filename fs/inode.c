@@ -12,7 +12,7 @@
 #include <linux/mm.h>
 #include <asm/system.h>
 
-struct m_inode inode_table[NR_INODE]={{0,},}; // i 节点数组
+struct m_inode inode_table[NR_INODE]={{0,},}; 				// i 节点数组
 
 static void read_inode(struct m_inode * inode);
 static void write_inode(struct m_inode * inode);
@@ -42,6 +42,10 @@ static inline void lock_inode(struct m_inode * inode)
 	sti();
 }
 
+/**
+ * 解锁 i 节点
+ * @param inode 需要解锁的 i 节点
+*/
 static inline void unlock_inode(struct m_inode * inode)
 {
 	inode->i_lock=0;
@@ -49,7 +53,7 @@ static inline void unlock_inode(struct m_inode * inode)
 }
 
 /**
- * 使 i 节点占用的缓冲区失效
+ * 使指定设备 i 节点占用的缓冲区失效
  * @param dev 设备号
 */
 void invalidate_inodes(int dev)
@@ -81,17 +85,18 @@ void sync_inodes(void)
 	inode = 0+inode_table;
 	for(i=0 ; i<NR_INODE ; i++,inode++) {
 		wait_on_inode(inode);
+		// i 节点不脏且不是管道节点，则将 i 节点写回磁盘
 		if (inode->i_dirt && !inode->i_pipe)
 			write_inode(inode);
 	}
 }
 
 /**
- * 文件数据块映射到盘块的操作
+ * 将 i 节点指定块磁盘块号
  * @param inode 文件的i节点
  * @param block 文件中的数据块号
- * @param create 创建标志
- * @return 指定块号
+ * @param create 创建标志（置位表明新建标志，其他表示获取）
+ * @return 映射的 i 节点所属磁盘块号 
 */
 static int _bmap(struct m_inode * inode,int block,int create)
 {
@@ -105,7 +110,7 @@ static int _bmap(struct m_inode * inode,int block,int create)
 		panic("_bmap: block>big");
 	// 如果是直接块
 	if (block<7) {
-		// 创建标志置位且对应数据块为 0，则向磁盘申请一磁盘块，并将其填入磁盘块中
+		// 创建标志置位且对应数据块为 0，则向磁盘申请一磁盘块，赋值给指定块
 		if (create && !inode->i_zone[block])
 			if (inode->i_zone[block]=new_block(inode->i_dev)) {
 				// 更新i节点参数
@@ -172,6 +177,12 @@ static int _bmap(struct m_inode * inode,int block,int create)
 	return i;
 }
 
+/**
+ * 映射 i 节点指定磁盘块
+ * @param inode 文件的i节点
+ * @param block 文件中的数据块号
+ * @return 映射的 i 节点所属磁盘块号 
+*/
 int bmap(struct m_inode * inode,int block)
 {
 	return _bmap(inode,block,0);
@@ -181,15 +192,17 @@ int bmap(struct m_inode * inode,int block)
  * 创建文件数据块在设备上的对应逻辑块
  * @param inode 文件i节点指针
  * @param block 逻辑块
- * @return 设备上对应的逻辑块号
+ * @return 映射的 i 节点所属磁盘块号 
 */
 int create_block(struct m_inode * inode, int block)
 {
 	return _bmap(inode,block,1);
 }
+
 /**
  * 释放指定 i 节点内存（回写入设备）
- * */	
+ * @param inode 文件i节点指针
+*/
 void iput(struct m_inode * inode)
 {
 	if (!inode)
@@ -200,11 +213,10 @@ void iput(struct m_inode * inode)
 		panic("iput: trying to free free inode");
 	// 如果是管道 i 节点
 	if (inode->i_pipe) {
-		wake_up(&inode->i_wait); // 唤醒等待该 i 节点的进程
-		if (--inode->i_count) // 复位该节点的引入计数标志
+		wake_up(&inode->i_wait); 	// 唤醒等待该 i 节点的进程
+		if (--inode->i_count) 		// 复位该节点的引入计数标志
 			return;
-		// 释放所占用的物理内存
-		free_page(inode->i_size);
+		free_page(inode->i_size);	// 释放管道 i 节点所所使用的物理内存
 		// 将 i 节点所有参数都置为 0 
 		inode->i_count=0;
 		inode->i_dirt=0;
@@ -229,8 +241,8 @@ repeat:
 	}
 	// 指向该 i 节点的目录数为 0 时
 	if (!inode->i_nlinks) {
-		truncate(inode); // 释放 i 节点所有逻辑块
-		free_inode(inode); // 释放该 i 节点
+		truncate(inode); 			// 释放 i 节点所有逻辑块
+		free_inode(inode); 			// 释放该 i 节点
 		return;
 	}
 	// i 节点已修改后，将其写回磁盘，等待写回完成，然后重复
@@ -239,13 +251,14 @@ repeat:
 		wait_on_inode(inode);
 		goto repeat;
 	}
-	inode->i_count--; // i 节点引用计数 -1
+	inode->i_count--; 				// i 节点引用计数 -1
 	return;
 }
 
 /**
  * 从 i 节点表中获取一个空闲 i 节点项
  * 寻找引用计数 count 为 0 的 i 节点，并将其写盘后清零
+ * @return 获取的空 i 节点指针
 */
 struct m_inode * get_empty_inode(void)
 {
@@ -258,8 +271,8 @@ struct m_inode * get_empty_inode(void)
 		// 从后向前遍历 i 节点数组，寻找引用计数为 0 的空闲 i 节点
 		for (i = NR_INODE; i ; i--) {
 			if (++last_inode >= inode_table + NR_INODE)
-				last_inode = inode_table; // 遍历完从头开始寻找
-			// 获取引用计数为 0 未上锁 且 脏标记为 0 的 i 节点
+				last_inode = inode_table; 	// 遍历完从头开始寻找
+			// 获取引用计数为 0 且未上锁 的干净 i 节点
 			if (!last_inode->i_count) {
 				inode = last_inode;
 				if (!inode->i_dirt && !inode->i_lock)
@@ -273,33 +286,36 @@ struct m_inode * get_empty_inode(void)
 					inode_table[i].i_num);
 			panic("No free inodes in mem");
 		}
-		// 等待指定i节点解锁
-		wait_on_inode(inode);
+		wait_on_inode(inode);				// 等待指定i节点解锁
 		// 如果 i 节点是脏的，将其写回磁盘，直到i节点变干净为止
 		while (inode->i_dirt) {
 			write_inode(inode);
 			wait_on_inode(inode);
 		}
-	} while (inode->i_count); // 只有获取到的i 节点 引用计数为 0 时，才获取
-	// 使用 0 填充 inode 所占用的内存，来将 i 节点清空
-	memset(inode,0,sizeof(*inode));
-	inode->i_count = 1; // i 节点引用计数为 1
+	} while (inode->i_count); 				// 只有获取到的i 节点 引用计数为 0 时，才获取
+	memset(inode,0,sizeof(*inode));			// 清空新申请的空 i 节点
+	inode->i_count = 1; 					// i 节点引用计数为 1
 	return inode;
 }
 
+/**
+ * 获取空闲的的 i 节点作为管道 i 节点
+*/
 struct m_inode * get_pipe_inode(void)
 {
 	struct m_inode * inode;
 
+	// 获取空闲 i 节点
 	if (!(inode = get_empty_inode()))
 		return NULL;
+	// 获取新的一个空内存页作为空闲管道 i 节点的使用内存
 	if (!(inode->i_size=get_free_page())) {
 		inode->i_count = 0;
 		return NULL;
 	}
-	inode->i_count = 2;	/* sum of readers/writers */
-	PIPE_HEAD(*inode) = PIPE_TAIL(*inode) = 0;
-	inode->i_pipe = 1;
+	inode->i_count = 2;								// 有读/写进程两个进程进行引用，因此引用计数设置为 2 
+	PIPE_HEAD(*inode) = PIPE_TAIL(*inode) = 0;		// 将管道 i 节点缓冲头指向尾指针
+	inode->i_pipe = 1;								// i_pipe 标志置位
 	return inode;
 }
 
@@ -307,6 +323,7 @@ struct m_inode * get_pipe_inode(void)
  * 从设备上读取指定的 i 节点
  * @param dev 当前设备号
  * @param nr i 节点号
+ * @return 获取的 i 节点
 */
 struct m_inode * iget(int dev,int nr)
 {
@@ -314,11 +331,10 @@ struct m_inode * iget(int dev,int nr)
 
 	if (!dev)
 		panic("iget with dev==0");
-	// 获取空 i 节点
-	empty = get_empty_inode();
+	empty = get_empty_inode();				// 获取空 i 节点
 	inode = inode_table;
+	// 查询 i 节点列表中指定的 i 节点
 	while (inode < NR_INODE+inode_table) {
-		// 查找未上锁的指定 i 节点
 		if (inode->i_dev != dev || inode->i_num != nr) {
 			inode++;
 			continue;
@@ -342,32 +358,32 @@ struct m_inode * iget(int dev,int nr)
 			if (i >= NR_SUPER) {
 				printk("Mounted inode hasn't got sb\n");
 				if (empty)
-					iput(empty); // 释放获取到的 i 节点内存
+					iput(empty); 		// 释放获取到的 i 节点内存
 				return inode;
 			}
-			iput(inode); // 释放该 i 节点。并将该 i 节点写盘
+			iput(inode); 				// 释放该 i 节点。并将该 i 节点写盘
 			dev = super_block[i].s_dev; // 获取安装i节点的设备号
-			nr = ROOT_INO;
-			inode = inode_table; //继续获取安装该文件系统的i节点
+			nr = ROOT_INO;				// nr 设置指定设备号的根文件 i 节点号
+			inode = inode_table; 		//继续获取安装该文件系统的i节点
 			continue;
 		}
-		// 已经找到相应 i 节点，则放弃申请的临时 i 节点
-		if (empty)
+		if (empty)						// 已经找到相应 i 节点，则放弃申请的临时 i 节点
 			iput(empty);
-		return inode; // 返回找到的 i 节点
+		return inode; 					// 返回找到的 i 节点
 	}
 	// 如果在 i 节点表中 没找到相应节点信息，则利用所申请的空节点在 i 节点表中建立新节点
 	if (!empty)
 		return (NULL);
-	inode=empty;
+	inode=empty;						// i 节点未保存在 i 节点表中，从设备中获取 i 节点
 	inode->i_dev = dev;
 	inode->i_num = nr;
-	read_inode(inode); // 将指定设备上的指定 i 节点读取到内存
+	read_inode(inode); 					// 将指定设备上的指定 i 节点读取到内存
 	return inode;
 }
 
 /**
  * 读取设备上指定i节点数据
+ * @param inode i 节点数据
 */
 static void read_inode(struct m_inode * inode)
 {
@@ -375,22 +391,15 @@ static void read_inode(struct m_inode * inode)
 	struct buffer_head * bh;
 	int block;
 
-	lock_inode(inode); // 给指定 i 节点加锁
-	// 获取该 i 节点的超级块
-	if (!(sb=get_super(inode->i_dev)))
+	lock_inode(inode); 																		// 给指定 i 节点加锁
+	if (!(sb=get_super(inode->i_dev)))														// 获取该 i 节点的超级块
 		panic("trying to read inode without dev");
-	// 该 i 节点所在的逻辑块号 = 2（启动块 + 超级块） + i 节点位图占用块数 + 逻辑块位图所占块数 + （i 节点号 - 1）/每块所含有 i 节点数 
-	block = 2 + sb->s_imap_blocks + sb->s_zmap_blocks +
-		(inode->i_num-1)/INODES_PER_BLOCK;
-	// 读取 i 节点所在块的信息到缓冲区
-	if (!(bh=bread(inode->i_dev,block)))
+	block = 2 + sb->s_imap_blocks + sb->s_zmap_blocks + (inode->i_num-1)/INODES_PER_BLOCK;	// 该 i 节点所在的逻辑块号 = 2（启动块 + 超级块） + i 节点位图占用块数 + 逻辑块位图所占块数 + （i 节点号 - 1）/每块所含有 i 节点数 
+	if (!(bh=bread(inode->i_dev,block)))													// 读取 i 节点所在块的信息到缓冲区
 		panic("unable to read i-node block");
-	// 将对应 i 节点信息复制到 inode 中
-	*(struct d_inode *)inode =
-		((struct d_inode *)bh->b_data)
-			[(inode->i_num-1)%INODES_PER_BLOCK];
-	brelse(bh); // 释放 缓冲区内存
-	unlock_inode(inode); // 解锁指定 i 节点
+	*(struct d_inode *)inode = ((struct d_inode *)bh->b_data)[(inode->i_num-1)%INODES_PER_BLOCK];	// 将对应 i 节点信息复制到 inode 中
+	brelse(bh); 																					// 释放 缓冲区内存
+	unlock_inode(inode); 																			// 解锁指定 i 节点
 }
 
 /**
@@ -403,30 +412,19 @@ static void write_inode(struct m_inode * inode)
 	struct buffer_head * bh;
 	int block;
 
-	lock_inode(inode); // 为指定 i 节点上锁
-	// 该 i 节点不是脏的且其为设置设备，直接解锁返回
-	if (!inode->i_dirt || !inode->i_dev) {
+	lock_inode(inode); 						// 为指定 i 节点上锁
+	if (!inode->i_dirt || !inode->i_dev) {	// 该 i 节点不是脏的且其为设置设备，直接解锁返回
 		unlock_inode(inode);
 		return;
-	}
-	// 获取该 i 节点所在驱动设备的超级块，不存在时死机
-	if (!(sb=get_super(inode->i_dev)))
+	}	
+	if (!(sb=get_super(inode->i_dev)))		// 获取该 i 节点所在驱动设备的超级块，不存在时死机
 		panic("trying to write inode without device");
-	// 该 i 节点所在的逻辑块号 = 2（启动块 + 超级块） + i 节点位图占用块数 + 逻辑块位图所占块数 + （i 节点号 - 1）/每块所含有 i 节点数 
-	block = 2 + sb->s_imap_blocks + sb->s_zmap_blocks +
-		(inode->i_num-1)/INODES_PER_BLOCK;
-	// 读取指定 i 节点所在块
-	if (!(bh=bread(inode->i_dev,block)))
+	block = 2 + sb->s_imap_blocks + sb->s_zmap_blocks + (inode->i_num-1)/INODES_PER_BLOCK;	// 该 i 节点所在的逻辑块号 = 2（启动块 + 超级块） + i 节点位图占用块数 + 逻辑块位图所占块数 + （i 节点号 - 1）/每块所含有 i 节点数 
+	if (!(bh=bread(inode->i_dev,block)))	// 读取指定 i 节点所在块
 		panic("unable to read i-node block");
-	// 将指定 i 节点信息复制到逻辑块对应该 i 节点的项中
-	((struct d_inode *)bh->b_data)
-		[(inode->i_num-1)%INODES_PER_BLOCK] =
-			*(struct d_inode *)inode;
-	// 置缓冲区脏标志，而 i 节点未被修改，所以 i 节点脏标志置 0
-	bh->b_dirt=1;
-	inode->i_dirt=0;
-	// 释放缓冲区内存
-	brelse(bh);
-	// 解锁 i
-	unlock_inode(inode);
+	((struct d_inode *)bh->b_data)[(inode->i_num-1)%INODES_PER_BLOCK] = *(struct d_inode *)inode;	// 将指定 i 节点信息复制到逻辑块对应该 i 节点的项中
+	bh->b_dirt=1;							// 置缓冲区脏标志，而 i 节点未被修改，所以 i 节点脏标志置 0
+	inode->i_dirt=0;						
+	brelse(bh);								// 释放缓冲区内存
+	unlock_inode(inode);					// 解锁 i
 }
